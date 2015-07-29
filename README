@@ -6,3 +6,11 @@ is primarily used for the UMass Lowell 91.305 course.
 masm - assembler
 mcc - microcode compiler
 mic1 - simulator
+
+The code was written over the years by
+- Jim Canning
+- Jim Canning's students
+- Richard Boccuzzi
+- Bill Moloney
+(subsequent authors will not be added to this list, but will be
+reflected in the Git logs)
