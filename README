@@ -1,0 +1,8 @@
+mic1
+
+This repository contains tools for working with the MIC-1 system and
+is primarily used for the UMass Lowell 91.305 course.
+
+masm - assembler
+mcc - microcode compiler
+mic1 - simulator

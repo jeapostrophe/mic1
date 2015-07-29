@@ -1,0 +1,3 @@
+*.o
+/lex.yy.c
+/masm
