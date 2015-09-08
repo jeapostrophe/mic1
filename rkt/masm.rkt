@@ -53,7 +53,8 @@
 
 (define (compile-block metas)
   (parameterize ([current-label->loc (compute-labels metas)])
-    (emit 0 metas)))
+    (emit 0 metas))
+  (void))
 
 (define (compute-labels metas)
   (define label->loc (make-hasheq))
@@ -78,7 +79,7 @@
     [(%meta)
      loc]
     [(%relocate dest-loc)
-     (emit loc (make-list (- dest-loc loc) (halt)))]
+     (emit loc (make-list (- dest-loc loc) "1111111111111111"))]
     [(%inst g)
      (emit loc (g))]
     [(? string? s)
@@ -121,10 +122,10 @@
 (define (swap  ) (format "1111101000000000"))
 (define (insp y) (format "11111100~a" (->bits 8 y)))
 (define (desp y) (format "11111110~a" (->bits 8 y)))
-(define (halt  ) (format "1111111111111111"))
+(define (halt  ) (format "1111111100000000"))
 
 ;; Example
-(module+ test
+(module+ main
   (mic1-block
    (%define start:)
    (lodd daddr:)              ;; load AC with data address
