@@ -1,13 +1,18 @@
 #lang racket/base
-
-;; Assembler Syntax
 (require (for-syntax racket/base
-                     syntax/parse))
+                     syntax/parse)
+         racket/match
+         racket/list
+         racket/format)
+
+;; Syntax
 
 (define-syntax-rule (mic1-block inst ...)
   (compile-block (parse-block inst ...)))
+
 (define-syntax-rule (%define lab)
   (raise-syntax-error '%define "Illegal outside mic1-block"))
+
 (define-syntax (parse-block stx)
   (syntax-parse stx
     [(_ inst ...)
@@ -22,8 +27,9 @@
                      [_
                       #f])))])
        (syntax/loc stx
-         (let ([lab (label)] ...)
+         (let ([lab (label 'lab)] ...)
            (list (parse-inst inst) ...))))]))
+
 (define-syntax (parse-inst stx)
   (syntax-parse stx
     #:literals (%define %relocate)
@@ -36,12 +42,9 @@
      (syntax/loc #'raw
        (%inst (λ () raw)))]))
 
-(struct label ())
-
 ;; Assembler
-(require racket/match
-         racket/list
-         racket/format)
+
+(struct label (tag))
 
 (struct %meta ())
 (struct %label-def! %meta (lab))
@@ -79,7 +82,7 @@
     [(%meta)
      loc]
     [(%relocate dest-loc)
-     (emit loc (make-list (- dest-loc loc) "1111111111111111"))]
+     (emit loc (make-list (- dest-loc loc) fill))]
     [(%inst g)
      (emit loc (g))]
     [(? string? s)
@@ -89,15 +92,20 @@
      (displayln (->bits 16 x))
      (+ loc 1)]))
 
+(define fill "1111111111111111")
+
 (define (->bits width value)
   (match value
-    [(? label? lab)
+    [(label tag)
      (->bits width
-             (hash-ref (current-label->loc) lab
+             (hash-ref (current-label->loc) value
                        (λ ()
-                         (error 'mic1-block "Unknown label"))))]
+                         (error 'mic1-block "label(~a) does not have location"
+                                tag))))]
     [(? number? n)
      (~a #:min-width width #:align 'right #:pad-string "0" (number->string n 2))]))
+
+;; Instructions
 
 (define (lodd x) (format "0000~a" (->bits 12 x)))
 (define (stod x) (format "0001~a" (->bits 12 x)))
@@ -114,69 +122,22 @@
 (define (jneg x) (format "1100~a" (->bits 12 x)))
 (define (jnze x) (format "1101~a" (->bits 12 x)))
 (define (call x) (format "1110~a" (->bits 12 x)))
-(define (pshi  ) (format "1111000000000000"))
-(define (popi  ) (format "1111001000000000"))
-(define (push  ) (format "1111010000000000"))
-(define (pop   ) (format "1111011000000000"))
-(define (retn  ) (format "1111100000000000"))
-(define (swap  ) (format "1111101000000000"))
+(define pshi "1111000000000000")
+(define popi "1111001000000000")
+(define push "1111010000000000")
+(define pop  "1111011000000000")
+(define retn "1111100000000000")
+(define swap "1111101000000000")
 (define (insp y) (format "11111100~a" (->bits 8 y)))
 (define (desp y) (format "11111110~a" (->bits 8 y)))
-(define (halt  ) (format "1111111100000000"))
+(define halt "1111111100000000")
 
-;; Example
-(module+ main
-  (mic1-block
-   (%define start:)
-   (lodd daddr:)              ;; load AC with data address
-   (push)                     ;; push AC to stack (2nd arg)
-   (lodd dcnt:)               ;; load AC with data count
-   (push)                     ;; push AC to stack (1st arg)
-   (call adder:)              ;; push return address on stack
-   (stod rslt:)               ;; store AC (has sum) to rslt: location
-   (halt)                     ;; enter debugger
-   (%define daddr:)
-   data:                      ;; location holds data array address
-   (%define data:)
-   25                         ;; first of 5 data values
-   50
-   75
-   100
-   125                        ;; last of 5 data values
-   (%define dcnt:)
-   5                          ;; location holds data array element count
-   (%define rslt:)
-   0                          ;; location for the sum to be stored
-   (%relocate 20)             ;; forces adder routine to start at location 20
-   (%define adder:)
-   (lodl 1)                   ;; get 1st arg from stack into AC (data count)
-   (stod mycnt:)              ;; store count at location mycnt:
-   (lodl 2)                   ;; get 2nd arg from stack into AC (data addr)
-   (pshi)                     ;; push indirect first datum to stack
-   (addd myc1:)               ;; add 1 (value at myc1:) to addr in AC
-   (stod myptr:)              ;; store new addr to location myptr:
-   (%define loop:)
-   (lodd mycnt:)              ;; load AC with value at mycnt: (data count)
-   (subd myc1:)               ;; subtract 1 (value at myc1:) from AC
-   (jzer done:)               ;; if new data count is 0 go to location done:
-   (stod mycnt:)              ;; if more data to add, store new data count
-   (lodd myptr:)              ;; load AC with addr of next datum
-   (pshi)                     ;; push indirect next datum to stack
-   (addd myc1:)               ;; add 1 (value at myc1:) to addr in AC
-   (stod myptr:)              ;; store new addr to location myptr:
-   (pop)                      ;; pop top of stack into AC (new datum)
-   (addl 0)                   ;; add new top of stack location to AC
-   (insp 1)                   ;; move stack pointer down one place
-   (push)                     ;; push new sum in AC onto stack
-   (jump loop:)               ;; jump to location loop:
-   (%define done:)
-   (pop)                      ;; come here when all data added, sum in AC
-   (retn)                     ;; return to caller
-   (halt)                     ;; should never get here (safety halt)
-   (%define mycnt:)
-   0                          ;; location for running count
-   (%define myptr:)
-   0                          ;; location for running data pointer
-   (%define myc1:)
-   1                          ;; location of a constant value of 1
-   ))
+;; Interface
+
+(provide mic1-block
+         
+         %define %relocate
+         
+         lodd stod addd subd jpos jzer jump loco lodl
+         stol addl subl jneg jnze call pshi popi push
+         pop retn swap insp desp halt)
