@@ -65,7 +65,7 @@ void genamux(bool set)
 	if (word[0] < 0)
 		word[0] = set;
 	else
-		printerr(semanticerr, reset, (int) "amux");
+      printerr(semanticerr, reset, 0, "amux");
 	word[20] = false;
 }
 
@@ -83,7 +83,7 @@ void gencond(int c)
 			case 3:	word[1] = word[2] = 1;		break;
 		}
 	else
-		printerr(semanticerr, reset, (int) "jump condition");
+      printerr(semanticerr, reset, 0, "jump condition");
 }
 
 /*----------------------------------------------------------------------*/
@@ -91,16 +91,21 @@ void gencond(int c)
 void genalu(int f)
 {
 	if (panicmode) return;
-	if (word[3] < 0)
-		switch (f)
-		{
-			case 0:	word[3] = word[4] = 0;		break;
-			case 1:	word[3] = 0; word[4] = 1;	break;
-			case 2:	word[3] = 1; word[4] = 0; 	break;
-			case 3:	word[3] = word[4] = 1;		break;
-		}
-	else
-		printerr(semanticerr, reset, (int) "alu function");
+    int w3 = 0;
+    int w4 = 0;
+    switch (f) {
+    case 0:	w3 = w4 = 0;		break;
+    case 1:	w3 = 0; w4 = 1;	break;
+    case 2:	w3 = 1; w4 = 0; 	break;
+    case 3:	w3 = w4 = 1;		break;
+    }
+    if (word[3] < 0) {
+      word[3] = w3;
+      word[4] = w4;
+    } else if ( word[3] == w3 && word[4] == w4 ) {
+    } else {
+      printerr(semanticerr, reset, 0, "alu function");
+    }
 }
 
 /*----------------------------------------------------------------------*/
@@ -108,16 +113,21 @@ void genalu(int f)
 void genshift(int f)
 {
 	if (panicmode) return;
-	if (word[5] < 0)
-		switch (f)
-		{
-			case 0:	word[5] = word[6] = 0;		break;
-			case 1:	word[5] = 0; word[6] = 1;	break;
-			case 2:	word[5] = 1; word[6] = 0; 	break;
-			case 3:	word[5] = word[6] = 1;		break;
-		}
-	else
-		printerr(semanticerr, reset, (int) "shift function");
+    int w5 = 0;
+    int w6 = 0;
+    switch (f) {
+    case 0:	w5 = w6 = 0;		break;
+    case 1:	w5 = 0; w6 = 1;	    break;
+    case 2:	w5 = 1; w6 = 0; 	break;
+    case 3:	w5 = w6 = 1;		break;
+    }
+    if (word[5] < 0) {
+      word[5] = w5;
+      word[6] = w6;
+    } else if ( word[5] == w5 && word[6] == w6 ) {
+    } else {
+      printerr(semanticerr, reset, 0,  "shift function");
+    }
 }
 
 /*----------------------------------------------------------------------*/
@@ -128,7 +138,7 @@ void genmbr(bool set)
 	if (word[7] < 0)
 		word[7] = set;
 	else
-		printerr(semanticerr, reset, (int) "mbr");
+      printerr(semanticerr, reset, 0, "mbr");
 }
 
 /*----------------------------------------------------------------------*/
@@ -139,7 +149,7 @@ void genmar(bool set)
 	if (word[8] < 0)
 		word[8] = set;
 	else
-		printerr(semanticerr, reset, (int) "write");
+      printerr(semanticerr, reset, 0, "write");
 }
 
 /*----------------------------------------------------------------------*/
@@ -150,7 +160,7 @@ void genread(bool set)
 	if (word[9] < 0)
 		word[9] = set;
 	else
-		printerr(semanticerr, reset, (int) "read");
+      printerr(semanticerr, reset, 0, "read");
 }
 
 /*----------------------------------------------------------------------*/
@@ -161,7 +171,7 @@ void genwrite(bool set)
 	if (word[10] < 0)
 		word[10] = set;
 	else
-		printerr(semanticerr, reset, (int) "write");
+      printerr(semanticerr, reset, 0, "write");
 }
 
 /*----------------------------------------------------------------------*/
@@ -172,7 +182,7 @@ void genenc(bool set)
 	if (word[11] < 0)
 		word[11] = set;
 	else
-		printerr(semanticerr, reset, (int) "enc");
+      printerr(semanticerr, reset, 0, "enc");
 }
 
 /*----------------------------------------------------------------------*/
@@ -192,7 +202,7 @@ void gencreg(enreg dreg)
 				word[12+i] = temparray[i];
 		else
 			if (!isequalb(temparray, word+12, 4))
-				printerr(semanticerr, reset, (int) "C bus");
+              printerr(semanticerr, reset, 0, "C bus");
 	}
 }
 
@@ -203,7 +213,7 @@ void genbreg(enreg dreg)
 	int temparray[4];
 	if (panicmode) return;
 	if (dreg == r_mbr)
-		printerr(semanticerr, wrongmbr, 0);
+      printerr(semanticerr, wrongmbr, 0, NULL);
 	else
 	{
 		int i;
@@ -213,7 +223,7 @@ void genbreg(enreg dreg)
 				word[16+i] = temparray[i];
 		else
 			if (!isequalb(temparray, word+16, 4))
-				printerr(semanticerr, reset, (int) "B bus");
+              printerr(semanticerr, reset, 0, "B bus");
 	}
 }
 
@@ -234,7 +244,7 @@ void genareg(enreg dreg)
 				word[20+i] = temparray[i];
 		else
 			if (!isequalb(temparray, word+20, 4))
-				printerr(semanticerr, reset, (int) "A bus");
+              printerr(semanticerr, reset, 0, "A bus");
 	}
 }
 
@@ -252,7 +262,7 @@ void genaddr(int addr)
 				word[24+i] = temparray[i];
 		else
 			if (!isequalb(temparray, word+24, 8))
-				printerr(semanticerr, reset, (int) "jump address");
+              printerr(semanticerr, reset, 0, "jump address");
 	}
 }
 
@@ -285,7 +295,7 @@ void genabreg(enreg dreg)
 		else if (word[16] == -1)
 			genbreg(dreg);
 		else
-			printerr(semanticerr, reset, (int) "A/B bus");
+          printerr(semanticerr, reset, 0, "A/B bus");
 	}
 }
 

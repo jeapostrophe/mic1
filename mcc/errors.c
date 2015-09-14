@@ -15,7 +15,7 @@ bool panicmode = false;
 
 /*------------------------------------------------------------------*/
 
-void printerr(enum classes class, unsigned short type, tokens t)
+void printerr(enum classes class, unsigned short type, tokens t, char * rmsg)
 {
 	static int oldlinenum = 0;
 	if (!panicmode)
@@ -83,7 +83,7 @@ void printerr(enum classes class, unsigned short type, tokens t)
 				switch(type)
 				{
 					case reset:
-							fprintf(stderr, "Error, reseting %s to new value\n", (char *) t);
+							fprintf(stderr, "Error, reseting %s to new value\n", rmsg);
 							break;
 					case overusembr:
 							fprintf(stderr, "Error, overusing mbr\n");

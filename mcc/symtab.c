@@ -55,7 +55,7 @@ symnode *insert(char *name, tokens token)
 		table[h]->token	= token;
 	}
 	else 
-		printerr(symtaberr, reinsert,0);
+      printerr(symtaberr, reinsert,0,NULL);
 	return(table[h]);
 }
 

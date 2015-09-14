@@ -28,7 +28,7 @@ extern enum debuglevels debuglevel;
 extern bool advanced;
 extern bool panicmode;
 
-extern void printerr(enum classes, unsigned short types, tokens t);
+extern void printerr(enum classes, unsigned short types, tokens t, char * rmsg);
 extern void panic();
 
 #endif

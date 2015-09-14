@@ -31,7 +31,7 @@ void getcomment()
 	if (ch == EOF)
 	{
 		eof = 1;
-		printerr(syntaxerr,unexpeof,0);
+		printerr(syntaxerr,unexpeof,0, NULL);
 	}
 	alignptrs();
 }
@@ -62,14 +62,14 @@ void getidtok(tokattr *pair)
 	if (ch == EOF)
 	{
 		eof = 1;
-		printerr(syntaxerr,unexpeof,0);
+		printerr(syntaxerr,unexpeof,0, NULL);
 	}
 	ungetbc();
 	pair->token = id;
 	pair->attr.entry = lookup(getlex());
 	if (pair->attr.entry == NULL)
 	{
-		printerr(parseerr, unknownid, 0);
+      printerr(parseerr, unknownid, 0, NULL);
 		pair->token = 0;
 	}
 	else
@@ -90,7 +90,7 @@ void getnumtok(tokattr *pair)
 	if (ch == EOF)
 	{
 		eof = 1;
-		printerr(syntaxerr,unexpeof,0);
+		printerr(syntaxerr,unexpeof,0, NULL);
 	}
 	ungetbc();	/* unget ch used for test in if */
 	pair->token = iconst;
@@ -203,7 +203,7 @@ tokattr gettoken()
 						getnumtok(&pair);
 					else 
 					{
-						printerr(syntaxerr,norecog,0);
+                      printerr(syntaxerr,norecog,0, NULL);
 						pair = gettoken();
 						recursed = true;
 					}

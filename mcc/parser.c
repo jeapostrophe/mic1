@@ -25,7 +25,7 @@ tokattr *match(tokens t)
 	}
 	else
 	{	
-		printerr(parseerr, nomatch, t);
+      printerr(parseerr, nomatch, t, NULL);
 		panic();
 		return(NULL);
 	}
@@ -45,7 +45,7 @@ enreg matchreg()
 {
 	tokattr *t;
 	bool paren = false;
-	enreg ret;
+	enreg ret = r_pc;
 	level++;
 	trace("matchreg");
 	switch(current.token)
@@ -63,13 +63,13 @@ enreg matchreg()
 						else if (t->attr.num == 0)
 							ret = r_0;
 						else
-							printerr(parseerr, expectreg, 0);
+                          printerr(parseerr, expectreg, 0, NULL);
 						if (paren)
 							match(rparen);
 						break;
-		case mar:		printerr(parseerr, nomar, 0);
+    case mar:		printerr(parseerr, nomar, 0, NULL);
 						break;
-		default:		printerr(parseerr, expectreg, 0);
+    default:		printerr(parseerr, expectreg, 0, NULL);
 						break;
 	}
 	level--;
@@ -80,7 +80,7 @@ enreg matchreg()
 
 bool choice()
 {
-	bool isjumpn;
+	bool isjumpn = false;
 	level++;
 	trace("choice");
 	if (current.token == n)
@@ -95,7 +95,7 @@ bool choice()
 	}
 	else
 	{	
-		printerr(parseerr, expectnz, 0);
+      printerr(parseerr, expectnz, 0, NULL);
 		if (current.token != THEN)
 			match(current.token);
 	}
@@ -116,7 +116,7 @@ void aluexp_p(enreg olddreg)
 		genalu(0);
 		dreg = matchreg();
 		if (dreg == r_mbr && olddreg == r_mbr)
-			printerr(semanticerr, overusembr, 0);
+          printerr(semanticerr, overusembr, 0, NULL);
 		else if (dreg == olddreg)
 		{
 			genareg(dreg);
@@ -159,7 +159,7 @@ void aluexp()
 					match(comma);
 					dreg = matchreg();
 					if (dreg == r_mbr && olddreg == r_mbr)
-						printerr(semanticerr, overusembr, 0);
+                      printerr(semanticerr, overusembr, 0, NULL);
 					else if (dreg == olddreg)
 					{
 						genareg(dreg);
@@ -177,9 +177,9 @@ void aluexp()
 		case reg:	dreg = matchreg();
 					aluexp_p(dreg);
 					break;
-		case mar:	printerr(parseerr, nomar, 0);
+    case mar:	printerr(parseerr, nomar, 0, NULL);
 					break;
-		default:	printerr(parseerr, unknownid, 0);
+    default:	printerr(parseerr, unknownid, 0, NULL);
 					break;
 	}
 	level--;
