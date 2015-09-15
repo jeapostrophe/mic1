@@ -1,11 +1,36 @@
-
-/*** #include "lex.yy.c" ***/
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "mic1symasm.h"
+
+#define HEADERS		1
+#define NO_HEADERS	0
+
+typedef struct nament{
+        char   name[26];
+        int    addr;
+        struct nament *next;
+}SYMTABENTRY;
+
+
+/**** declarations and globals ****/
+
+void  str_6(char *);
+void  str_8(char *);
+void  str_12(char *);
+void  str_16(char *);
+void  bstr_16(unsigned short);
+void  generate_code(int);
+void  update_sym_table(char *);
+void  search_sym_table(char *);
+void  print_first_pass(int);
+void  append_table(void);
+void  dump_table(void);
+extern int yylex(void);
+extern char * yytext;
+
+FILE  *p1;
 
 char cstr_6[7];
 char cstr_8[9];
@@ -15,43 +40,23 @@ char binstr_16[17];
 
 int  label_pc = -1;
 
-void  str_6();
-void  str_8();
-void  str_12();
-void  str_16();
-void  bstr_16();
-void  generate_code();
-void  update_sym_table();
-void  search_sym_table();
-void  dump_table(void);
-
 unsigned short pc = 0;
-FILE  *p1;
 
-struct nament{
-	char   name[26];
-	int    addr;
-	struct nament *next;
-};
-
-struct nament *symtab = (struct nament *)0;
-
-extern int yylex(void);
-extern char * yytext;
+SYMTABENTRY *symtab = NULL;
 
 int  main(int argc, char *argv[])
 {
-        int tok, i, dump_tab=0, linum=0;
+        int tok, i, dump_tab=0, linum=0, object_file=0;
 	unsigned short temp;
-/*        printf("COMMAND RECOGNIZER, ENTER COMMAND AND CR\n\n");    */
 
        if(argc > 1 && (strcmp(argv[1], "-s") == 0)) dump_tab = linum = 1;
+	else if(argc > 1 && (strcmp(argv[1], "-o") == 0)) object_file = 1;
 
 	p1 = fopen("/tmp/passone", "w+");
 	unlink("/tmp/passone");
         while(tok=yylex()){
         switch(tok){
-          case 1:  switch(tok=yylex()){
+          case LODD:  switch(tok=yylex()){
 		    case INTEG: 
 		     str_12(yytext);
                      fprintf(p1,"%d  0000%s\n", pc, cstr_12);
@@ -65,7 +70,7 @@ int  main(int argc, char *argv[])
 		   }
 		   break;
 
-          case 2:  switch(tok=yylex()){
+          case STOD:  switch(tok=yylex()){
 		    case INTEG: 
 		     str_12(yytext);
                      fprintf(p1,"%d  0001%s\n", pc, cstr_12);
@@ -79,7 +84,7 @@ int  main(int argc, char *argv[])
 		   }
 		   break;
 
-          case 3:  switch(tok=yylex()){
+          case ADDD:  switch(tok=yylex()){
 		    case INTEG: 
 		     str_12(yytext);
                      fprintf(p1,"%d  0010%s\n", pc, cstr_12);
@@ -93,7 +98,7 @@ int  main(int argc, char *argv[])
 		   }
 		   break;
 
-          case 4:  switch(tok=yylex()){
+          case SUBD:  switch(tok=yylex()){
 		    case INTEG: 
 		     str_12(yytext);
                      fprintf(p1,"%d  0011%s\n", pc, cstr_12);
@@ -107,7 +112,7 @@ int  main(int argc, char *argv[])
 		   }
 		   break;
 
-          case 5:  switch(tok=yylex()){
+          case JPOS:  switch(tok=yylex()){
 		    case INTEG: 
 		     str_12(yytext);
                      fprintf(p1,"%d  0100%s\n",  pc, cstr_12);
@@ -121,7 +126,7 @@ int  main(int argc, char *argv[])
 		   }
 		   break;
 
-          case 6:  switch(tok=yylex()){
+          case JZER:  switch(tok=yylex()){
 		    case INTEG: 
 		     str_12(yytext);
                      fprintf(p1,"%d  0101%s\n", pc, cstr_12);
@@ -135,7 +140,7 @@ int  main(int argc, char *argv[])
 		   }
 		   break;
 
-          case 7:  switch(tok=yylex()){
+          case JUMP:  switch(tok=yylex()){
 		    case INTEG: 
 		     str_12(yytext);
                      fprintf(p1,"%d  0110%s\n", pc, cstr_12);
@@ -149,7 +154,7 @@ int  main(int argc, char *argv[])
 		   }
 		   break;
 
-          case 8:  switch(tok=yylex()){
+          case LOCO:  switch(tok=yylex()){
 		    case INTEG: 
 		     if(yytext[0] == '-'){
 		       fprintf(stderr,"Negative operand after LOCO is %s on line %d, must be positive !\n",yytext, pc);
@@ -167,17 +172,7 @@ int  main(int argc, char *argv[])
 		   }
 		   break;
 
-/***
-          case 8:  if((tok=yylex()) != INTEG){
-                       fprintf(stderr,"Bad operand after LOCO is %s\n",yytext);
-                       exit(1);
-                   }
-		   str_12(yytext);
-                   fprintf(p1,"%d  0111%s\n",  pc, cstr_12);
-                   break;
-***/
-
-          case 9:  if((tok=yylex()) != INTEG){
+          case LODL:  if((tok=yylex()) != INTEG){
                        fprintf(stderr,"Bad operand after LODL is %s\n",yytext);
                        exit(1);
                    }
@@ -185,7 +180,7 @@ int  main(int argc, char *argv[])
                    fprintf(p1,"%d  1000%s\n", pc, cstr_12);
                    break;
 
-          case 10:  if((tok=yylex()) != INTEG){
+          case STOL:  if((tok=yylex()) != INTEG){
                        fprintf(stderr,"Bad operand after STOL is %s\n",yytext);
                        exit(1);
                    }
@@ -193,7 +188,7 @@ int  main(int argc, char *argv[])
                    fprintf(p1,"%d  1001%s\n", pc, cstr_12);
                    break;
 
-          case 11:  if((tok=yylex()) != INTEG){
+          case ADDL:  if((tok=yylex()) != INTEG){
                        fprintf(stderr,"Bad operand after ADDL is %s\n",yytext);
                        exit(1);
                    }
@@ -201,7 +196,7 @@ int  main(int argc, char *argv[])
                    fprintf(p1,"%d  1010%s\n",  pc, cstr_12);
                    break;
 
-          case 12:  if((tok=yylex()) != INTEG){
+          case SUBL:  if((tok=yylex()) != INTEG){
                        fprintf(stderr,"Bad operand after SUBL is %s\n",yytext);
                        exit(1);
                    }
@@ -209,7 +204,7 @@ int  main(int argc, char *argv[])
                    fprintf(p1,"%d  1011%s\n", pc, cstr_12);
                    break;
 
-          case 13: switch(tok=yylex()){
+          case JNEG: switch(tok=yylex()){
 		    case INTEG: 
 		     str_12(yytext);
                      fprintf(p1,"%d  1100%s\n", pc, cstr_12);
@@ -223,7 +218,7 @@ int  main(int argc, char *argv[])
 		   }
 		   break;
 
-           case 14: switch(tok=yylex()){
+           case JNZE: switch(tok=yylex()){
 		    case INTEG: 
 		     str_12(yytext);
                      fprintf(p1,"%d  1101%s\n", pc, cstr_12);
@@ -237,7 +232,7 @@ int  main(int argc, char *argv[])
 		   }
 		   break;
 
-          case 15:  switch(tok=yylex()){
+          case CALL:  switch(tok=yylex()){
 		    case INTEG: 
 		     str_12(yytext);
                      fprintf(p1,"%d  1110%s\n", pc, cstr_12);
@@ -251,25 +246,25 @@ int  main(int argc, char *argv[])
 		   }
 		   break;
 
-          case 16: fprintf(p1,"%d  1111000000000000\n",pc);
+          case PSHI: fprintf(p1,"%d  1111000000000000\n",pc);
                    break;
 
-          case 17: fprintf(p1,"%d  1111001000000000\n",pc);
+          case POPI: fprintf(p1,"%d  1111001000000000\n",pc);
                    break;
 
-          case 18: fprintf(p1,"%d  1111010000000000\n",pc);
+          case PUSH: fprintf(p1,"%d  1111010000000000\n",pc);
                    break;
 
-          case 19: fprintf(p1,"%d  1111011000000000\n",pc);
+          case POP: fprintf(p1,"%d  1111011000000000\n",pc);
                    break;
 
-          case 20: fprintf(p1,"%d  1111100000000000\n",pc);
+          case RETN: fprintf(p1,"%d  1111100000000000\n",pc);
                    break;
 
-          case 21: fprintf(p1,"%d  1111101000000000\n",pc);
+          case SWAP: fprintf(p1,"%d  1111101000000000\n",pc);
                    break;
 
-          case 22: if((tok=yylex()) != INTEG){
+          case INSP: if((tok=yylex()) != INTEG){
                        fprintf(stderr,"Bad operand after INSP is %s\n",yytext);
                        exit(1);
                    }
@@ -277,7 +272,7 @@ int  main(int argc, char *argv[])
                    fprintf(p1,"%d  11111100%s\n", pc, cstr_8);
                    break;
 
-          case 23: if((tok=yylex()) != INTEG){
+          case DESP: if((tok=yylex()) != INTEG){
                        fprintf(stderr,"Bad operand after DESP is %s\n",yytext);
                        exit(1);
                    }
@@ -285,17 +280,14 @@ int  main(int argc, char *argv[])
                    fprintf(p1,"%d  11111110%s\n",  pc, cstr_8);
                    break;
 
-          case 24: fprintf(p1,"%d  1111111100000000\n",pc);
+          case HALT: fprintf(p1,"%d  1111111111000000\n",pc);
                    break;
 
-
-          case 25:  str_16(yytext);
+          case INTEG:  str_16(yytext);
 		    fprintf(p1,"%d  %s\n", pc, cstr_16);
- /*                   fprintf(stderr,"Misplaced integer is %s\n",yytext);   */
- /*                   exit(25);     */
                     break;
 
-	  case 27:  if (label_pc == pc){	/* for < lbx: lby: >   */
+	  case LABEL:  if (label_pc == pc){	/* for < lbx: lby: >   */
 			fprintf(p1,"%d  U0000000000000000    %s\n", pc, yytext);
 		        break;
 		    }
@@ -306,7 +298,7 @@ int  main(int argc, char *argv[])
 		    break;
 
 
-	  case 28:  if((tok=yylex()) != INTEG){
+	  case LOC:  if((tok=yylex()) != INTEG){
                        fprintf(stderr,"Bad operand after .LOC is %s\n",yytext);
                        exit(1);
                    }
@@ -318,7 +310,7 @@ int  main(int argc, char *argv[])
 		   pc = temp - 1;
                    break;
 
-	  case 29:  i=1;
+	  case STR:  i=1;
 		    do{
 			if(*(yytext+i) == '\"'){
 			  bstr_16(0);
@@ -335,7 +327,7 @@ int  main(int argc, char *argv[])
 		    break;
 
 
-          case 26:  fprintf(stderr,"Unrecognized token is %s\n",yytext);
+          case JUNK:  fprintf(stderr,"Unrecognized token is %s\n",yytext);
                     exit(26);
 
           default:  fprintf(stderr,"Default case, unrecoverable error\n");
@@ -343,21 +335,47 @@ int  main(int argc, char *argv[])
    }
    pc++;
 }
-/**** 
-   fclose(p1); 
-****/
+   if(object_file){
+     print_first_pass(NO_HEADERS);
+     append_table();
+     return 0;
+   }
+   if(linum){
+     print_first_pass(HEADERS);
+   }	
    generate_code(linum);
-
    if(dump_tab)dump_table();
 
-/*    printf("IF I GET HERE THE PROGRAM TERMINATED PROPERLY\n\n");    */
+   return 0;
 }
-void dump_table(void){
+
+void print_first_pass(int headers)
+{
+	char inbuf[81];
+
+	if(headers == HEADERS){
+	  printf("\n  FIRST PASS \n");
+          rewind(p1);
+	  while(fgets(inbuf, 80, p1) != NULL){
+		printf("   %s", inbuf);
+	  }
+	  printf("\n  SECOND PASS \n");
+	}else{
+	  rewind(p1);
+          while(fgets(inbuf, 80, p1) != NULL){
+                printf("   %s", inbuf);
+          }
+	}
+}
+
+void dump_table(void)
+{
 	FILE *fd;
 	struct nament *list;
 	fd = popen("sort +0 -1 -f", "w");
+	printf("\n  SYMBOL TABLE \n");
 	printf("***********************************************\n");
-        for(list = symtab; list != (struct nament *)0; list = list->next){
+        for(list = symtab; list != NULL; list = list->next){
 		fprintf(fd,"%-25s %4d\n",list->name, list->addr);
 	}
 	fclose(fd);
@@ -365,13 +383,22 @@ void dump_table(void){
 	printf("***********************************************\n");
 }
 
-int get_sym_val(symbol)
-	char *symbol;
+void append_table(void)
+{
+	struct nament *list;
+
+	printf("  %d %s\n", 4096, "x");
+	for(list = symtab; list != NULL; list = list->next){
+	  printf("    %-25s %4d\n",list->name, list->addr);
+	}
+}
+
+int get_sym_val(char *symbol)
 {
 	int i,j;
 	struct nament *element, *list;
 
-	for(list = symtab; list != (struct nament *)0; list = list->next){
+	for(list = symtab; list != NULL; list = list->next){
 		if(strcmp(list->name, symbol) == 0){
 		   return(list->addr);
 		}
@@ -380,8 +407,8 @@ int get_sym_val(symbol)
 }
 
 
-void generate_code(int linum){
-/****   FILE  *p1;   ****/
+void generate_code(int linum)
+{
 	char linbuf[10];
 	char instruction[18];
 	int  line_number;
@@ -394,37 +421,37 @@ void generate_code(int linum){
 	sprintf(linbuf,"%5d:  ", line_number);
 
 	while(fscanf(p1,"%d %s", &pc, instruction) != EOF){
-	if((diff = pc - old_pc ) > 1){
-	  for(j=1; j<diff; j++){
+	  if((diff = pc - old_pc ) > 1){
+	    for(j=1; j<diff; j++){
 		sprintf(linbuf,"%5d:  ", line_number++);
 		printf("%s1111111111111111\n",(linum ? linbuf: "\0"));
+	    }
 	  }
-	}
-	sprintf(linbuf,"%5d:  ", line_number++);
-	old_pc = pc;
+	  sprintf(linbuf,"%5d:  ", line_number++);
+	  old_pc = pc;
 
-	 if(instruction[0] == 'U'){
-	   fscanf(p1, "%s", symbol);
-	   if((sym_val = get_sym_val(symbol)) == -1){
+	  if(instruction[0] == 'U'){
+	    fscanf(p1, "%s", symbol);
+	    if((sym_val = get_sym_val(symbol)) == -1){
 		fprintf(stderr, "no symbol in symbol table: %s\n", symbol);
 		exit(27);
-	   }
+	    }
 	   	
-           for(i=0; i<12; i++){
+            for(i=0; i<12; i++){
 	     cstr_12[i] = '0';
-	   }
-	   cstr_12[12] = '\0';
+	    }
+	    cstr_12[12] = '\0';
          
-	   mask = 2048;
-           for(i=0; i<12; i++){
+	    mask = 2048;
+            for(i=0; i<12; i++){
 	      if(sym_val & mask)
 		  cstr_12[i] = '1';
 	      mask >>= 1;
-	   }
-	   for(i=0; i<12; i++){
+	    }
+	    for(i=0; i<12; i++){
 		instruction[i+5] = cstr_12[i];
-	   }
-	   printf("%s%s\n",(linum ? linbuf: "\0"),&instruction[1]);
+	    }
+	    printf("%s%s\n",(linum ? linbuf: "\0"),&instruction[1]);
 	 }else
 	   printf("%s%s\n",(linum ? linbuf: "\0"),instruction);
 	}
@@ -434,8 +461,7 @@ void generate_code(int linum){
 		
 	
 
-void update_sym_table(symbol)
-	char *symbol;
+void update_sym_table(char *symbol)
 {
 	int i,j;
 	struct nament *element, *list;
@@ -450,8 +476,7 @@ void update_sym_table(symbol)
 	exit(27);
 }
 
-void search_sym_table(symbol)
-	char *symbol;
+void search_sym_table(char *symbol)
 {
 	int i,j;
 	struct nament *element, *list;
@@ -467,28 +492,27 @@ void search_sym_table(symbol)
 
 void    str_6(char *cstr)
 {
-        unsigned short str_val;
-        int i,j,k,mask;
+	unsigned short str_val;
+	int i,j,k,mask;
 
-        str_val = (unsigned short)atoi(cstr);
-
+	str_val = (unsigned short)atoi(cstr);
+	
         for(i=0; i<6; i++){
-           cstr_6[i] = '0';
-        }
-        cstr_6[6] = '\0';
-
-        j=0;
-        mask = 32;
+	   cstr_6[i] = '0';
+	}
+	cstr_6[6] = '\0';
+         
+	j=0;
+	mask = 32;
         for(i=0; i<6; i++){
-           if(str_val & mask)
-                cstr_6[i] = '1';
-           mask >>= 1;
-        }
+	   if(str_val & mask)
+		cstr_6[i] = '1';
+	   mask >>= 1;
+	}
 
 }
 
-void    str_8(cstr)
-	char *cstr;
+void    str_8(char *cstr)
 {
 	unsigned short str_val;
 	int i,j,k,mask;
@@ -510,8 +534,7 @@ void    str_8(cstr)
 
 }
 
-void    str_12(cstr)
-	char *cstr;
+void    str_12(char *cstr)
 {
 	unsigned short str_val;
 	int i,j,k,mask;
@@ -533,8 +556,7 @@ void    str_12(cstr)
 
 }
 
-void    str_16(cstr)
-	char *cstr;
+void    str_16(char *cstr)
 {
 	short str_val;
 	int i,j,k,mask;
@@ -555,8 +577,7 @@ void    str_16(cstr)
 
 }
 
-void	bstr_16(bin_num)
-	unsigned short bin_num;
+void	bstr_16(unsigned short bin_num)
 {
         short str_val;
         int i,j,k,mask;
@@ -576,28 +597,3 @@ void	bstr_16(bin_num)
         }
 
 }
-
-
-/***
-void    str_16(cstr)
-	char *cstr;
-{
-	unsigned short str_val;
-	int i,j,k,mask;
-
-	str_val = (unsigned short)atoi(cstr);
-	
-        for(i=0; i<16; i++){
-	   cstr_16[i] = '0';
-	}
-	cstr_16[16] = '\0';
-         
-	mask = (1024 * 32);
-        for(i=0; i<16; i++){
-	   if(str_val & mask)
-		cstr_16[i] = '1';
-	   mask >>= 1;
-	}
-
-}
-***/
