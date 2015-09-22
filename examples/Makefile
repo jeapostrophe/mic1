@@ -1,5 +1,6 @@
 help:
 	@echo make adder.test
+	@echo make prom.dat
 
 prom.dat: prom.mc
 	../mcc/mcc < $^ > $@
