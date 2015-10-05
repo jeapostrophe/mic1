@@ -34,34 +34,27 @@ DataBusType    ShifterResult ;
 
 extern int btoi();
 
+void DumpRegister(const char* label, DataBusType reg) {
+     printf ("%s : %s  , or %5d  or signed %6d\n",
+             label, reg, btoi(reg), (short)btoi(reg)) ;
+}
+
 DumpRegisters () 
 
 {
 
-     printf ("\nProgramCounter : %s  base 10:  %6d\n", ProgramCounter,
-                                              btoi(ProgramCounter)) ;
-     printf ("Accumulator    : %s  base 10:  %6d\n", Accumulator,
-                                              btoi(Accumulator)) ;
-     printf ("InstructionReg : %s  base 10:  %6d\n", InstructionReg,
-                                              btoi(InstructionReg)) ;
-     printf ("TempInstr      : %s  base 10:  %6d\n", TempInstruction,
-                                              btoi(TempInstruction)) ;
-     printf ("StackPointer   : %s  base 10:  %6d\n", StackPointer,
-                                              btoi(StackPointer)) ;
-     printf ("ARegister      : %s  base 10:  %6d\n", ARegister,
-                                              btoi(ARegister)) ;
-     printf ("BRegister      : %s  base 10:  %6d\n", BRegister,
-                                              btoi(BRegister)) ;
-     printf ("CRegister      : %s  base 10:  %6d\n", CRegister,
-                                              btoi(CRegister)) ;
-     printf ("DRegister      : %s  base 10:  %6d\n", DRegister,
-                                              btoi(DRegister)) ;
-     printf ("ERegister      : %s  base 10:  %6d\n", ERegister,
-                                              btoi(ERegister)) ;
-     printf ("FRegister      : %s  base 10:  %6d\n", FRegister,
-                                              btoi(FRegister)) ;
-
-
+     printf ("\n");
+     DumpRegister("ProgramCounter", ProgramCounter);
+     DumpRegister("Accumulator   ", Accumulator);
+     DumpRegister("InstructionReg", InstructionReg);
+     DumpRegister("TempInstr     ", TempInstruction);
+     DumpRegister("StackPointer  ", StackPointer);
+     DumpRegister("ARegister     ", ARegister);
+     DumpRegister("BRegister     ", BRegister);
+     DumpRegister("CRegister     ", CRegister);
+     DumpRegister("DRegister     ", DRegister);
+     DumpRegister("ERegister     ", ERegister);
+     DumpRegister("FRegister     ", FRegister);
 
 }			/* END DumpRegisters */
 
