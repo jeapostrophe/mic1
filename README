@@ -15,3 +15,12 @@ The code was written over the years by
 - Bill Moloney
 (subsequent authors will not be added to this list, but will be
 reflected in the Git logs)
+
+TODO list
+- Add comments to prom.mc (use {})
+- Document the tools
+- Add symbol table export from masm to mic1 debugger
+- Change mic1 debugger to allow debugging of microcode
+  (currently it resets mcpc to 0)
+- Change mcc to have a symbol table and not require lines
+- Simplify masm implementation

@@ -17,4 +17,4 @@ memory.o: memory.c globals.h
 shifter.o: shifter.c globals.h
 	gcc -c -g shifter.c
 clean:
-	rm mic1 *.o
+	rm -f mic1 *.o
