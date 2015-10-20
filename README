@@ -8,6 +8,9 @@ masm - assembler
 mic1 - simulator
  rkt - tools rewritten in Racket
 
+Run `make` at the top level to build everything you need to run
+programs.
+
 The code was written over the years by
 - Jim Canning
 - Jim Canning's students

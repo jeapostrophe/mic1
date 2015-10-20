@@ -1,14 +1,15 @@
+all: prom.dat adder.o help
+
 help:
 	@echo make adder.test
-	@echo make prom.dat
 
 prom.dat: prom.mc
 	../mcc/mcc < $^ > $@
 
-%.test: prom.dat %.obj
+%.test: prom.dat %.o
 	../mic1/mic1 $^ 0 1024
 
-%.obj: %.asm
+%.o: %.asm
 	../masm/masm < $^ > $@
 
 

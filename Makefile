@@ -1,4 +1,4 @@
-DIRS := masm mcc mic1
+DIRS := masm mcc mic1 examples
 
 all: tar build
 
