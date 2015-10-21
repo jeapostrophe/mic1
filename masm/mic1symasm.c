@@ -102,6 +102,7 @@ int main(int argc, char *argv[]) {
     case JPOS: emit_label_op("JPOS", "0100"); break;
     case JZER: emit_label_op("JZER", "0101"); break;
     case JUMP: emit_label_op("JUMP", "0110"); break;
+    case LOCO: emit_label_op("LOCO", "0111"); break;
     case JNEG: emit_label_op("JNEG", "1100"); break;
     case JNZE: emit_label_op("JNZE", "1101"); break;
     case CALL: emit_label_op("CALL", "1110"); break;
@@ -112,25 +113,6 @@ int main(int argc, char *argv[]) {
     case RETN: emit_fixed_op("1111100"); break;
     case SWAP: emit_fixed_op("1111101"); break;
     case HALT: emit_fixed_op("1111111"); break;
-
-    case LOCO:
-      switch(tok=yylex()){
-      case INTEG:
-        if(yytext[0] == '-'){
-          fprintf(stderr,"Negative operand after LOCO is %s on line %d, must be positive !\n",yytext, pc);
-          exit(1);
-        }
-        str_12(yytext);
-        fprintf(p1,"%d  0111%.12s\n", pc, cstr_16);
-        break;
-      case LABEL:
-        fprintf(p1,"%d  U0111000000000000    %s\n", pc, yytext);
-        break;
-      default:
-        fprintf(stderr,"Bad operand after LOCO is %s on line %d\n",yytext, pc);
-        exit(1);
-      }
-      break;
 
     case LODL:
       require_int(12, "LODL");
