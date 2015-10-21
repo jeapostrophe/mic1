@@ -94,6 +94,9 @@ int main(int argc, char *argv[]) {
     case JPOS: emit_label_op("JPOS", "0100"); break;
     case JZER: emit_label_op("JZER", "0101"); break;
     case JUMP: emit_label_op("JUMP", "0110"); break;
+    case JNEG: emit_label_op("JNEG", "1100"); break;
+    case JNZE: emit_label_op("JNZE", "1101"); break;
+    case CALL: emit_label_op("CALL", "1110"); break;
 
     case LOCO:
       switch(tok=yylex()){
@@ -133,10 +136,6 @@ int main(int argc, char *argv[]) {
       require_int(12, "SUBL");
       fprintf(p1,"%d  1011%.12s\n", pc, cstr_16);
       break;
-
-    case JNEG: emit_label_op("JNEG", "1100"); break;
-    case JNZE: emit_label_op("JNZE", "1101"); break;
-    case CALL: emit_label_op("CALL", "1110"); break;
 
     case PSHI:
       fprintf(p1,"%d  1111000000000000\n",pc);
