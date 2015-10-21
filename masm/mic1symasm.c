@@ -7,9 +7,6 @@
 extern int yylex(void);
 extern char* yytext;
 
-#define HEADERS     1
-#define NO_HEADERS  0
-
 typedef struct nament {
   char           name[26];
   int            addr;
@@ -35,10 +32,10 @@ void str_n(char n, short num) {
 void str_16(char *cstr) { str_n(16, atoi(cstr)); }
 void bstr_16(unsigned short bin_num) { str_n(16, bin_num); }
 
-void generate_code(int);
+void generate_code();
 void update_sym_table(char *);
 void search_sym_table(char *);
-void print_first_pass(int);
+void print_first_pass();
 void append_table(void);
 void dump_table(void);
 
@@ -170,11 +167,8 @@ void generate_first_pass() {
 }
 
 int main(int argc, char *argv[]) {
-  int linum = 0, object_file = 0;
-
-  if (argc > 1 && (strcmp(argv[1], "-s") == 0)) {
-    linum = 1;
-  } else if (argc > 1 && (strcmp(argv[1], "-o") == 0)) {
+  int object_file = 0;
+  if (argc > 1 && (strcmp(argv[1], "-o") == 0)) {
     object_file = 1;
   }
 
@@ -183,36 +177,22 @@ int main(int argc, char *argv[]) {
   generate_first_pass();
   
   if (object_file) {
-    print_first_pass(NO_HEADERS);
+    print_first_pass();
     append_table();
-    return 0;
+  } else {
+    generate_code();
+    dump_table();
   }
-  
-  if(linum){
-    print_first_pass(HEADERS);
-  }
-  
-  generate_code(linum);
-  dump_table();
  
   return 0;
 }
 
-void print_first_pass(int headers) {
+void print_first_pass() {
   char inbuf[81];
 
-  if (headers == HEADERS) {
-    printf("\n  FIRST PASS \n");
-    rewind(p1);
-    while (fgets(inbuf, 80, p1) != NULL) {
-      printf("   %s", inbuf);
-    }
-    printf("\n  SECOND PASS \n");
-  } else {
-    rewind(p1);
-    while (fgets(inbuf, 80, p1) != NULL) {
-      printf("   %s", inbuf);
-    }
+  rewind(p1);
+  while (fgets(inbuf, 80, p1) != NULL) {
+    printf("   %s", inbuf);
   }
 }
 
@@ -242,25 +222,19 @@ int get_sym_val(char *symbol) {
   return (-1);
 }
 
-void generate_code(int linum) {
-  char linbuf[10] = {'0'};
+void generate_code() {
   char instruction[18] = {'0'};
-  int  line_number = 0;
   int  pc = 0, mask = 0, sym_val = 0, old_pc = 0, diff = 0;
   char symbol[26] = {'0'};
 
   rewind(p1);
 
-  sprintf(linbuf,"%5d:  ", line_number);
-
   while (fscanf(p1,"%d %s", &pc, instruction) != EOF) {
     if ((diff = pc - old_pc ) > 1) {
       for (int j=1; j<diff; j++) {
-        sprintf(linbuf,"%5d:  ", line_number++);
-        printf("%s1111111111111111\n",(linum ? linbuf: "\0"));
+        printf("1111111111111111\n");
       }
     }
-    sprintf(linbuf,"%5d:  ", line_number++);
     old_pc = pc;
 
     if (instruction[0] == 'U') {
@@ -275,9 +249,9 @@ void generate_code(int linum) {
         instruction[i+5] = cstr_16[i];
       }
       
-      printf("%s%s\n", (linum ? linbuf: "\0"), &instruction[1]);
+      printf("%s\n", &instruction[1]);
     } else {
-      printf("%s%s\n", (linum ? linbuf: "\0"), instruction);
+      printf("%s\n", instruction);
     }
   }
   fclose(p1);

@@ -21,7 +21,4 @@ reflected in the Git logs)
 
 TODO list
 - Document the tools
-- Change mic1 debugger to allow debugging of microcode
-  (currently it resets mcpc to 0)
 - Change mcc to have a symbol table and not require lines
-- Simplify masm implementation
