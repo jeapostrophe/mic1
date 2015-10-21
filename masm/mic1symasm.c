@@ -30,11 +30,7 @@ extern int yylex(void);
 extern char* yytext;
 
 FILE *p1;
-char cstr_6[7];
-char cstr_8[9];
-char cstr_12[13];
 char cstr_16[17];
-char binstr_16[17];
 int  label_pc = -1;
 unsigned short pc = 0;
 SYMTABENTRY *symtab = NULL;
@@ -57,7 +53,7 @@ int main(int argc, char *argv[]) {
       switch(tok=yylex()){
       case INTEG:
         str_12(yytext);
-        fprintf(p1,"%d  0000%s\n", pc, cstr_12);
+        fprintf(p1,"%d  0000%.12s\n", pc, cstr_16);
         break;
       case LABEL:
         fprintf(p1,"%d  U0000000000000000    %s\n", pc, yytext);
@@ -72,7 +68,7 @@ int main(int argc, char *argv[]) {
       switch(tok=yylex()){
       case INTEG:
         str_12(yytext);
-        fprintf(p1,"%d  0001%s\n", pc, cstr_12);
+        fprintf(p1,"%d  0001%.12s\n", pc, cstr_16);
         break;
       case LABEL:
         fprintf(p1,"%d  U0001000000000000    %s\n", pc, yytext);
@@ -87,7 +83,7 @@ int main(int argc, char *argv[]) {
       switch(tok=yylex()){
       case INTEG:
         str_12(yytext);
-        fprintf(p1,"%d  0010%s\n", pc, cstr_12);
+        fprintf(p1,"%d  0010%.12s\n", pc, cstr_16);
         break;
       case LABEL:
         fprintf(p1,"%d  U0010000000000000    %s\n", pc, yytext);
@@ -102,7 +98,7 @@ int main(int argc, char *argv[]) {
       switch(tok=yylex()){
       case INTEG:
         str_12(yytext);
-        fprintf(p1,"%d  0011%s\n", pc, cstr_12);
+        fprintf(p1,"%d  0011%.12s\n", pc, cstr_16);
         break;
       case LABEL:
         fprintf(p1,"%d  U0011000000000000    %s\n", pc, yytext);
@@ -117,7 +113,7 @@ int main(int argc, char *argv[]) {
       switch(tok=yylex()){
       case INTEG:
         str_12(yytext);
-        fprintf(p1,"%d  0100%s\n",  pc, cstr_12);
+        fprintf(p1,"%d  0100%.12s\n",  pc, cstr_16);
         break;
       case LABEL:
         fprintf(p1,"%d  U0100000000000000    %s\n", pc, yytext);
@@ -132,7 +128,7 @@ int main(int argc, char *argv[]) {
       switch(tok=yylex()){
       case INTEG:
         str_12(yytext);
-        fprintf(p1,"%d  0101%s\n", pc, cstr_12);
+        fprintf(p1,"%d  0101%.12s\n", pc, cstr_16);
         break;
       case LABEL:
         fprintf(p1,"%d  U0101000000000000    %s\n", pc, yytext);
@@ -147,7 +143,7 @@ int main(int argc, char *argv[]) {
       switch(tok=yylex()){
       case INTEG:
         str_12(yytext);
-        fprintf(p1,"%d  0110%s\n", pc, cstr_12);
+        fprintf(p1,"%d  0110%.12s\n", pc, cstr_16);
         break;
       case LABEL:
         fprintf(p1,"%d  U0110000000000000    %s\n", pc, yytext);
@@ -166,7 +162,7 @@ int main(int argc, char *argv[]) {
           exit(1);
         }
         str_12(yytext);
-        fprintf(p1,"%d  0111%s\n", pc, cstr_12);
+        fprintf(p1,"%d  0111%.12s\n", pc, cstr_16);
         break;
       case LABEL:
         fprintf(p1,"%d  U0111000000000000    %s\n", pc, yytext);
@@ -183,7 +179,7 @@ int main(int argc, char *argv[]) {
         exit(1);
       }
       str_12(yytext);
-      fprintf(p1,"%d  1000%s\n", pc, cstr_12);
+      fprintf(p1,"%d  1000%.12s\n", pc, cstr_16);
       break;
 
     case STOL:
@@ -192,7 +188,7 @@ int main(int argc, char *argv[]) {
         exit(1);
       }
       str_12(yytext);
-      fprintf(p1,"%d  1001%s\n", pc, cstr_12);
+      fprintf(p1,"%d  1001%.12s\n", pc, cstr_16);
       break;
 
     case ADDL:
@@ -201,7 +197,7 @@ int main(int argc, char *argv[]) {
         exit(1);
       }
       str_12(yytext);
-      fprintf(p1,"%d  1010%s\n",  pc, cstr_12);
+      fprintf(p1,"%d  1010%.12s\n",  pc, cstr_16);
       break;
 
     case SUBL:
@@ -210,14 +206,14 @@ int main(int argc, char *argv[]) {
         exit(1);
       }
       str_12(yytext);
-      fprintf(p1,"%d  1011%s\n", pc, cstr_12);
+      fprintf(p1,"%d  1011%.12s\n", pc, cstr_16);
       break;
 
     case JNEG:
       switch(tok=yylex()){
       case INTEG:
         str_12(yytext);
-        fprintf(p1,"%d  1100%s\n", pc, cstr_12);
+        fprintf(p1,"%d  1100%.12s\n", pc, cstr_16);
         break;
       case LABEL:
         fprintf(p1,"%d  U1100000000000000    %s\n", pc, yytext);
@@ -232,7 +228,7 @@ int main(int argc, char *argv[]) {
       switch(tok=yylex()){
       case INTEG:
         str_12(yytext);
-        fprintf(p1,"%d  1101%s\n", pc, cstr_12);
+        fprintf(p1,"%d  1101%.12s\n", pc, cstr_16);
         break;
       case LABEL:
         fprintf(p1,"%d  U1101000000000000    %s\n", pc, yytext);
@@ -247,7 +243,7 @@ int main(int argc, char *argv[]) {
       switch(tok=yylex()){
       case INTEG:
         str_12(yytext);
-        fprintf(p1,"%d  1110%s\n", pc, cstr_12);
+        fprintf(p1,"%d  1110%.12s\n", pc, cstr_16);
         break;
       case LABEL:
         fprintf(p1,"%d  U1110000000000000    %s\n", pc, yytext);
@@ -288,7 +284,7 @@ int main(int argc, char *argv[]) {
         exit(1);
       }
       str_8(yytext);
-      fprintf(p1,"%d  11111100%s\n", pc, cstr_8);
+      fprintf(p1,"%d  11111100%.8s\n", pc, cstr_16);
       break;
 
     case DESP:
@@ -297,15 +293,16 @@ int main(int argc, char *argv[]) {
         exit(1);
       }
       str_8(yytext);
-      fprintf(p1,"%d  11111110%s\n",  pc, cstr_8);
+      fprintf(p1,"%d  11111110%.8s\n",  pc, cstr_16);
       break;
 
     case HALT:
       fprintf(p1,"%d  1111111111000000\n",pc);
       break;
 
-    case INTEG:  str_16(yytext);
-      fprintf(p1,"%d  %s\n", pc, cstr_16);
+    case INTEG:
+      str_16(yytext);
+      fprintf(p1,"%d  %.16s\n", pc, cstr_16);
       break;
 
     case LABEL:
@@ -337,7 +334,7 @@ int main(int argc, char *argv[]) {
       do{
         if(*(yytext+i) == '\"'){
           bstr_16(0);
-          fprintf(p1,"%d  %s\n", pc, binstr_16);
+          fprintf(p1,"%d  %.16s\n", pc, cstr_16);
           break;
         }
         temp = (unsigned short)*(yytext+i++);
@@ -345,7 +342,7 @@ int main(int argc, char *argv[]) {
           temp = (temp | ((unsigned short)*(yytext+i) << 8));
         }
         bstr_16(temp);
-        fprintf(p1,"%d  %s\n", pc, binstr_16);
+        fprintf(p1,"%d  %.16s\n", pc, cstr_16);
       } while (*(yytext+i++) != '\"' && ++pc);
       break;
 
@@ -455,19 +452,19 @@ void generate_code(int linum) {
       }
 
       for (int i=0; i<12; i++) {
-        cstr_12[i] = '0';
+        cstr_16[i] = '0';
       }
-      cstr_12[12] = '\0';
+      cstr_16[12] = '\0';
 
       mask = 2048;
       for (int i=0; i<12; i++) {
         if (sym_val & mask) {
-          cstr_12[i] = '1';
+          cstr_16[i] = '1';
         }
         mask >>= 1;
       }
       for (int i=0; i<12; i++) {
-        instruction[i+5] = cstr_12[i];
+        instruction[i+5] = cstr_16[i];
       }
       printf("%s%s\n", (linum ? linbuf: "\0"), &instruction[1]);
     } else {
@@ -504,14 +501,14 @@ void str_6(char *cstr) {
   unsigned short str_val = (unsigned short)atoi(cstr);
 
   for (int i=0; i<6; i++) {
-    cstr_6[i] = '0';
+    cstr_16[i] = '0';
   }
-  cstr_6[6] = '\0';
+  cstr_16[6] = '\0';
 
   int mask = 32;
   for(int i=0; i<6; i++){
     if(str_val & mask) {
-      cstr_6[i] = '1';
+      cstr_16[i] = '1';
     }
     mask >>= 1;
   }
@@ -521,14 +518,14 @@ void str_8(char *cstr) {
   unsigned short str_val = (unsigned short)atoi(cstr);
 
   for (int i=0; i<8; i++) {
-    cstr_8[i] = '0';
+    cstr_16[i] = '0';
   }
-  cstr_8[8] = '\0';
+  cstr_16[8] = '\0';
 
   int mask = 128;
   for (int i=0; i<8; i++) {
     if (str_val & mask) {
-      cstr_8[i] = '1';
+      cstr_16[i] = '1';
     }
     mask >>= 1;
   }
@@ -538,14 +535,14 @@ void str_12(char *cstr) {
   unsigned short str_val = (unsigned short)atoi(cstr);
 
   for (int i=0; i<12; i++) {
-    cstr_12[i] = '0';
+    cstr_16[i] = '0';
   }
-  cstr_12[12] = '\0';
+  cstr_16[12] = '\0';
 
   int mask = 2048;
   for (int i=0; i<12; i++){
     if (str_val & mask) {
-      cstr_12[i] = '1';
+      cstr_16[i] = '1';
     }
     mask >>= 1;
   }
@@ -572,14 +569,14 @@ void bstr_16(unsigned short bin_num) {
   short str_val = bin_num;
 
   for (int i=0; i<16; i++){
-    binstr_16[i] = '0';
+    cstr_16[i] = '0';
   }
-  binstr_16[16] = '\0';
+  cstr_16[16] = '\0';
 
   int mask = (1024 * 32);
   for (int i=0; i<16; i++) {
     if(str_val & mask) {
-      binstr_16[i] = '1';
+      cstr_16[i] = '1';
     }
     mask >>= 1;
   }
