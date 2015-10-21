@@ -307,61 +307,58 @@ int From, To ;
 
 }			/* END DumpMemory */
 
+void WriteChip(const char *src) {
+  int        ChipNumber ;
+  char *dest;
+
+  ChipNumber = MemorySlot / MemoryChipSize ;
+  Offset     = MemorySlot MOD MemoryChipSize ;
+       if (ChipNumber == 0) dest = MemoryChip0[Offset];
+  else if (ChipNumber == 1) dest = MemoryChip1[Offset];
+  else if (ChipNumber == 2) dest = MemoryChip2[Offset];
+  else if (ChipNumber == 3) dest = MemoryChip3[Offset];
+
+  strcpy(dest, src);
+}
+
 void InitializeMemory (program_file)
 char *program_file;
 {
-FILE *inputfile, *fopen () ;	/* pointer to input file  library   */
-				/* function to OPEN file for input  */
-int        ChipNumber ;
-
-    for (MemorySlot = 0 ; MemorySlot <= 4095 ; MemorySlot++) 
-    {
-        ChipNumber = MemorySlot / MemoryChipSize ;
-        Offset     = MemorySlot MOD MemoryChipSize ;
-        if (ChipNumber == 0) 
-	    strcpy (MemoryChip0[Offset], "1111111111111111") ;
-        else if (ChipNumber == 1) 
-	    strcpy (MemoryChip1[Offset], "1111111111111111") ;
-        else if (ChipNumber == 2) 
-	    strcpy (MemoryChip2[Offset], "1111111111111111") ;
-        else if (ChipNumber == 3) 
-	    strcpy (MemoryChip3[Offset], "1111111111111111") ;
-    }
+  FILE *inputfile, *fopen () ;	/* pointer to input file  library   */
+  /* function to OPEN file for input  */
+  char src[1024];
+   
+  for (MemorySlot = 0 ; MemorySlot <= 4095 ; MemorySlot++) {
+    WriteChip("1111111111111111");
+  }
     
-    strcpy (MemoryChip3[1020], "0000000000000000");
-    strcpy (MemoryChip3[1021], "0000000000000000");
-    strcpy (MemoryChip3[1022], "0000000000000000");
-    strcpy (MemoryChip3[1023], "0000000000000000");
+  strcpy (MemoryChip3[1020], "0000000000000000");
+  strcpy (MemoryChip3[1021], "0000000000000000");
+  strcpy (MemoryChip3[1022], "0000000000000000");
+  strcpy (MemoryChip3[1023], "0000000000000000");
 
+  /* open program file for loading                */
 
+  if((inputfile = fopen (program_file, "r")) == NULL){
+    if((inputfile = fopen ("inner.dat", "r")) == NULL){
+      fprintf(stderr,"Can't open Program File, aborting \n");
+      exit(2);
+    }
+  }
 
-   /* open program file for loading                */
-
-   if((inputfile = fopen (program_file, "r")) == NULL){
-      if((inputfile = fopen ("inner.dat", "r")) == NULL){
-         fprintf(stderr,"Can't open Program File, aborting \n");
-         exit(2);
-      }
-   }
-
-
-    for (MemorySlot = 0 ; MemorySlot < (MemoryChipSize * 4); MemorySlot++) 
-    {
-        ChipNumber  =  MemorySlot / MemoryChipSize ;
-        Offset      =  MemorySlot MOD MemoryChipSize ;
-        if (ChipNumber == 0) 
-	    if((fscanf (inputfile, "%s", MemoryChip0[Offset])) == EOF)break;
-        if (ChipNumber == 1) 
-	    if((fscanf (inputfile, "%s", MemoryChip1[Offset])) == EOF)break;
-        if (ChipNumber == 2) 
-	    if((fscanf (inputfile, "%s", MemoryChip2[Offset])) == EOF)break;
-        if (ChipNumber == 3) 
-	    if((fscanf (inputfile, "%s", MemoryChip3[Offset])) == EOF)break;
+  for (MemorySlot = 0 ; MemorySlot < (MemoryChipSize * 4); MemorySlot++) {
+  init_start: if((fscanf(inputfile, "%s", src)) == EOF) break;
+    if(src[0] == '#') {
+      fscanf(inputfile, "%s", src);
+      fscanf(inputfile, "%s", src);
+      goto init_start;
     }
 
-    fprintf(stderr,"Read in %d machine instructions\n", MemorySlot);
-    fclose (inputfile) ;    
+    WriteChip(src);
+  }
 
+  fprintf(stderr,"Read in %d machine instructions\n", MemorySlot);
+  fclose (inputfile) ;    
 }			/* END InitializeMemory */
 
 void    MemoryRead(mem_loc, mem_val)

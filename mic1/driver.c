@@ -21,6 +21,9 @@ extern void DumpMemory () ;
 extern void GeneratePulse () ;
 extern int Cycle () ;
 
+void InitializeSymbolTable(char *);
+void ShowSymbolTable();
+const char *LookupSymbol(char *);
 
 struct Clock
       {
@@ -63,6 +66,7 @@ Bit ReadBit ;
 Bit WriteBit ;
 int ClockCycle, mem_location, ml, i, j, m, col, mem_offset;
 char query[80];
+char query_val[80];
 char mem_loc[17];
 
 char   promfile[80];
@@ -113,6 +117,7 @@ int    pc, sp;
 
      BurnInProm (promfile);
      InitializeMemory (programfile) ;
+     InitializeSymbolTable (programfile) ;
      InitializePCandStackPointer (pc, sp) ;
      strcpy (Address, "000000000000") ;
      strcpy (Data,    "0000000000000000") ;
@@ -158,7 +163,7 @@ tag: for ( ; ; )
 ***********/
     if(1 || query[0] == 'y' || query[0] == 'Y'){
       while(1){
-	   printf("Type decimal address to view memory,  q  to quit or  c  to continue: ");
+	   printf("Type address to view memory, [q]uit, [c]ontinue, <Enter> for symbol table:\n");
 	   fgets(query, 79, stdin);
 	   if(query[0] == 'c'){
 /*
@@ -177,12 +182,14 @@ tag: for ( ; ; )
 	      MicroPc = 0 ;
 	      Quartz.Subcycle = 0;
               goto tag;
-	   }
-	   if(query[0] == 'q' || query[0] == 'Q'){
+	   } else if(query[0] == '\n') {
+         ShowSymbolTable();
+       } else if(query[0] == 'q' || query[0] == 'Q'){
 	      printf("MIC-1 emulator finishing, goodbye\n\n");
 	      exit(1);
-	   }else{
-	      ml = mem_location = atoi(query);
+	   } else {
+         sscanf(query, "%s", query_val);
+         ml = mem_location = atoi(LookupSymbol(query_val));
 	      if(mem_location < 0 || mem_location > 4095){
 		printf("BAD LOCATION VALUE, MUST BE BETWEEN 0 and 4095\n");
 		continue;
@@ -201,7 +208,7 @@ tag: for ( ; ; )
 	      mem_loc[16] = '\0';
 	      printf("     the location %4d has value %16s , or %5d  or signed %6d\n",
                                ml, mem_loc, btoi(mem_loc), (short)btoi(mem_loc));
-	      printf("Type  <Enter>  to continue debugging\nType        q  to quit\nType        f for forward range\nType        b for backward range: ");
+	      printf("Type  <Enter>  to continue debugging\nType        q  to quit\nType        f for forward range\nType        b for backward range:\n");
 		fgets(query, 79, stdin);
            if(query[0] == 'q' | query[0] == 'Q'){
               printf("MIC-1 emulator finishing, goodbye\n\n");
@@ -347,4 +354,70 @@ void  Set_nonblocking_io(){
 	  perror("set blocking fcntl error: ");
 	  exit(2);
 	}
+}
+
+typedef struct SymbolTableEntry {
+  char *name;
+  char *value;
+  struct SymbolTableEntry *next;
+} SymbolTableEntry_t;
+
+SymbolTableEntry_t *SymbolTable = NULL;
+
+const char *LookupSymbol(char *name) {
+  SymbolTableEntry_t *cur = SymbolTable;
+  while (cur != NULL) {
+    if (strcmp(name, cur->name) == 0) {
+      return cur->value;
+    } else {
+      cur = cur->next;
+    }
+  }
+  return name;
+}
+
+void ShowSymbolTable() {
+  SymbolTableEntry_t *cur = SymbolTable;
+  while (cur != NULL) {
+    printf("\t%s\n", cur->name);
+    cur = cur->next;
+  }
+}
+
+void InitializeSymbolTable(char *program_file) {
+  FILE *inputfile;
+  if ((inputfile = fopen (program_file, "r")) == NULL) {
+      fprintf(stderr,"Can't open Program File, aborting \n");
+      exit(2);
+  }
+
+  unsigned int count = 0;
+  char src[1024];
+  char *name;
+  char *value;
+  SymbolTableEntry_t *new_entry;
+  while(1) {
+    if ((fscanf(inputfile, "%s", src)) == EOF) break;
+    if (src[0] != '#') break;
+
+    fscanf(inputfile, "%s", src);
+    name = malloc(sizeof(char)*strlen(src));
+    strcpy(name, src);
+    
+    fscanf(inputfile, "%s", src);
+    value = malloc(sizeof(char)*strlen(src));
+    strcpy(value, src);
+
+    new_entry = malloc(sizeof(SymbolTableEntry_t));
+    new_entry->name = name;
+    new_entry->value = value;
+    new_entry->next = SymbolTable;    
+    SymbolTable = new_entry;
+    
+    count++;
+  }
+
+  fprintf(stderr,"Read in %d symbol table entries\n", count);
+  fclose(inputfile);
+  return;
 }
