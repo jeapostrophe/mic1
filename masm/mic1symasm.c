@@ -73,6 +73,14 @@ void emit_label_op(const char *op, const char *code) {
   }
 }
 
+void emit_fixed_op(const char *code) {
+  fprintf(p1, "%d  %s", pc, code);
+  for ( int i = strlen(code); i < 16; i++ ) {
+    fprintf(p1, "0");
+  }
+  fprintf(p1, "\n");
+}
+
 int main(int argc, char *argv[]) {
   int tok = 0, i = 0, dump_tab = 0, linum = 0, object_file = 0;
   unsigned short temp = 0;
@@ -97,6 +105,13 @@ int main(int argc, char *argv[]) {
     case JNEG: emit_label_op("JNEG", "1100"); break;
     case JNZE: emit_label_op("JNZE", "1101"); break;
     case CALL: emit_label_op("CALL", "1110"); break;
+    case PSHI: emit_fixed_op("1111000"); break;
+    case POPI: emit_fixed_op("1111001"); break;
+    case PUSH: emit_fixed_op("1111010"); break;
+    case  POP: emit_fixed_op("1111011"); break;
+    case RETN: emit_fixed_op("1111100"); break;
+    case SWAP: emit_fixed_op("1111101"); break;
+    case HALT: emit_fixed_op("1111111"); break;
 
     case LOCO:
       switch(tok=yylex()){
@@ -137,30 +152,6 @@ int main(int argc, char *argv[]) {
       fprintf(p1,"%d  1011%.12s\n", pc, cstr_16);
       break;
 
-    case PSHI:
-      fprintf(p1,"%d  1111000000000000\n",pc);
-      break;
-
-    case POPI:
-      fprintf(p1,"%d  1111001000000000\n",pc);
-      break;
-
-    case PUSH:
-      fprintf(p1,"%d  1111010000000000\n",pc);
-      break;
-
-    case POP:
-      fprintf(p1,"%d  1111011000000000\n",pc);
-      break;
-
-    case RETN:
-      fprintf(p1,"%d  1111100000000000\n",pc);
-      break;
-
-    case SWAP:
-      fprintf(p1,"%d  1111101000000000\n",pc);
-      break;
-
     case INSP:
       require_int(8, "INSP");
       fprintf(p1,"%d  11111100%.8s\n", pc, cstr_16);
@@ -169,10 +160,6 @@ int main(int argc, char *argv[]) {
     case DESP:
       require_int(8, "DESP");
       fprintf(p1,"%d  11111110%.8s\n",  pc, cstr_16);
-      break;
-
-    case HALT:
-      fprintf(p1,"%d  1111111111000000\n",pc);
       break;
 
     case INTEG:
