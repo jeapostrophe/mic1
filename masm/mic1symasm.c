@@ -81,6 +81,11 @@ void emit_fixed_op(const char *code) {
   fprintf(p1, "\n");
 }
 
+void emit_int_op(char n, const char *op, const char* code) {
+  require_int(n, op);
+  fprintf(p1,"%d  %s%.*s\n", pc, code, n, cstr_16);
+}
+
 int main(int argc, char *argv[]) {
   int tok = 0, i = 0, dump_tab = 0, linum = 0, object_file = 0;
   unsigned short temp = 0;
@@ -103,6 +108,10 @@ int main(int argc, char *argv[]) {
     case JZER: emit_label_op("JZER", "0101"); break;
     case JUMP: emit_label_op("JUMP", "0110"); break;
     case LOCO: emit_label_op("LOCO", "0111"); break;
+    case LODL: emit_int_op(12, "LODL", "1000"); break;
+    case STOL: emit_int_op(12, "STOL", "1001"); break;
+    case ADDL: emit_int_op(12, "ADDL", "1010"); break;
+    case SUBL: emit_int_op(12, "SUBL", "1011"); break;
     case JNEG: emit_label_op("JNEG", "1100"); break;
     case JNZE: emit_label_op("JNZE", "1101"); break;
     case CALL: emit_label_op("CALL", "1110"); break;
@@ -112,37 +121,9 @@ int main(int argc, char *argv[]) {
     case  POP: emit_fixed_op("1111011"); break;
     case RETN: emit_fixed_op("1111100"); break;
     case SWAP: emit_fixed_op("1111101"); break;
+    case INSP: emit_int_op( 8, "INSP", "11111100"); break;
+    case DESP: emit_int_op( 8, "DESP", "11111110"); break;
     case HALT: emit_fixed_op("1111111"); break;
-
-    case LODL:
-      require_int(12, "LODL");
-      fprintf(p1,"%d  1000%.12s\n", pc, cstr_16);
-      break;
-
-    case STOL:
-      require_int(12, "STOL");
-      fprintf(p1,"%d  1001%.12s\n", pc, cstr_16);
-      break;
-
-    case ADDL:
-      require_int(12, "ADDL");
-      fprintf(p1,"%d  1010%.12s\n",  pc, cstr_16);
-      break;
-
-    case SUBL:
-      require_int(12, "SUBL");
-      fprintf(p1,"%d  1011%.12s\n", pc, cstr_16);
-      break;
-
-    case INSP:
-      require_int(8, "INSP");
-      fprintf(p1,"%d  11111100%.8s\n", pc, cstr_16);
-      break;
-
-    case DESP:
-      require_int(8, "DESP");
-      fprintf(p1,"%d  11111110%.8s\n",  pc, cstr_16);
-      break;
 
     case INTEG:
       str_16(yytext);
