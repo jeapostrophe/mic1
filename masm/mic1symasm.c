@@ -85,19 +85,10 @@ void emit_int_op(char n, const char *op, const char* code) {
   fprintf(p1,"%d  %s%.*s\n", pc, code, n, cstr_16);
 }
 
-int main(int argc, char *argv[]) {
-  int tok = 0, i = 0, dump_tab = 0, linum = 0, object_file = 0;
+void generate_first_pass() {
+  int tok = 0, i = 0;
   unsigned short temp = 0;
-
-  if (argc > 1 && (strcmp(argv[1], "-s") == 0)) {
-    dump_tab = linum = 1;
-  } else if (argc > 1 && (strcmp(argv[1], "-o") == 0)) {
-    object_file = 1;
-  }
-
-  p1 = fopen("/tmp/passone", "w+");
-  unlink("/tmp/passone");
-  while( (tok=yylex()) ){
+  while( (tok=yylex()) ) {
     switch(tok){
     case LODD: emit_label_op(12, "LODL", "0000"); break;
     case STOD: emit_label_op(12, "STOD", "0001"); break;
@@ -176,6 +167,20 @@ int main(int argc, char *argv[]) {
     }
     pc++;
   }
+}
+
+int main(int argc, char *argv[]) {
+  int dump_tab = 0, linum = 0, object_file = 0;
+
+  if (argc > 1 && (strcmp(argv[1], "-s") == 0)) {
+    dump_tab = linum = 1;
+  } else if (argc > 1 && (strcmp(argv[1], "-o") == 0)) {
+    object_file = 1;
+  }
+
+  p1 = fopen("/tmp/passone", "w+");
+  unlink("/tmp/passone");
+  generate_first_pass();
   
   if (object_file) {
     print_first_pass(NO_HEADERS);
