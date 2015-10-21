@@ -242,4 +242,4 @@
 
 {IR = 1111 1111 ???? ????} {HALT}
 {Assert read and write, which signals interpreter to halt.}
-80:rd; wr; 
+80:rd; wr; goto 0;

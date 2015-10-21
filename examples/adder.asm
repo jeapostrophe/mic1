@@ -3,7 +3,9 @@ start:  lodd daddr:  ; load AC with data address
         lodd dcnt:   ; load AC with data count
         push         ; push AC to stack (1st arg)
         call adder:  ; push return address on stack
-        stod rslt:   ; store AC (has sum) to rslt: location 
+        stod rslt:   ; store AC (has sum) to rslt: location
+        halt
+        loco 2
         halt         ; enter debugger
 daddr:  data:        ; location holds data array address
 data:   25           ; first of 5 data values
