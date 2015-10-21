@@ -145,7 +145,7 @@ tag: for ( ; ; )
 
         ActivateMemory (Address, Data, ReadBit, WriteBit) ;  
 
-	if ((ReadBit == One) && (WriteBit == One)){
+        if ((ReadBit == One) && (WriteBit == One) && ClockCycle != Cycle() ){
 	   sleep(1);
 	   Set_blocking_io();
 	   tcflush(0, TCIFLUSH);
@@ -153,9 +153,11 @@ tag: for ( ; ; )
 	}
      }
 
+     
     DumpRegisters () ; 
     ClockCycle = Cycle () ;
-    printf ("\nTotal cycles   : %d\n\n", ClockCycle);
+    printf ("\nMicroPC        : %d\n", MicroPc);
+    printf ("Total cycles   : %d\n\n", ClockCycle);
     tcflush(0, TCIFLUSH);  /* dump anything in the input queue */
 /***********
     printf("If you would like to examine memory enter  y  if not enter  n: ");
@@ -179,8 +181,8 @@ tag: for ( ; ; )
 	      ProgramCounter[16] = '\0';
 */
 	      printf("\nThe new PC is  : %s\n\n", ProgramCounter);
-	      MicroPc = 0 ;
-	      Quartz.Subcycle = 0;
+//	      MicroPc = 0 ;
+//	      Quartz.Subcycle = 0;
               goto tag;
 	   } else if(query[0] == '\n') {
          ShowSymbolTable();
