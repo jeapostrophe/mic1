@@ -14,7 +14,9 @@ int linenum = 0;
 
 /*----------------------------------------------------------------------*/
 
-static char buf[2050];
+#define READSIZE 1025
+#define BUFSIZE (2*(READSIZE+1))
+static char buf[BUFSIZE];
 static int beginlptr = 0;
 static int endlptr = 0;
 static int forwardptr = 0;
@@ -39,9 +41,9 @@ void initbuf(char *file)
 	if (fd >= 0)
 	{
 		int i;
-		buf[1024] = EOF;
-		buf[2049] = EOF;
-		if ((i = read(fd, buf, 1024))!=1024)
+		buf[READSIZE] = EOF;
+		buf[BUFSIZE-1] = EOF;
+		if ((i = read(fd, buf, READSIZE))!=READSIZE)
 			buf[i] = EOF;
 		moveupline();
 		if ((debuglevel & scanbug_m) && (linenum >=0) && !eof)
@@ -61,12 +63,12 @@ int getcurpos()
 {
 	int pos;
 	if (beginlptr < forwardptr)
-		if ((forwardptr < 1024) || (beginlptr > 1024))
+		if ((forwardptr < READSIZE) || (beginlptr > READSIZE))
 			pos = forwardptr - beginlptr;
 		else 
 			pos = (forwardptr - beginlptr) - 1;
 	else
-		pos = 2050 - (beginlptr - endlptr);
+		pos = BUFSIZE - (beginlptr - endlptr);
 	return(pos);
 } 	/* end of getcurpos */
 
@@ -79,7 +81,7 @@ char *getlinex()
 	int len;
 	if (beginlptr < endlptr)
 	{
-		if ((endlptr < 1024) || (beginlptr > 1024))
+		if ((endlptr < READSIZE) || (beginlptr > READSIZE))
 		{
 			len = endlptr - beginlptr;
 			str = (char *) salloc(len+1);
@@ -90,16 +92,16 @@ char *getlinex()
 		{
 			len = (endlptr - beginlptr) - 1;
 			str = (char *) salloc(len+1);
-			strncpy(str,buf+beginlptr,1024 - beginlptr);
-			strncat(str,buf+1025,endlptr - 1025);
+			strncpy(str,buf+beginlptr,READSIZE - beginlptr);
+			strncat(str,buf+(READSIZE+1),endlptr - (READSIZE+1));
 			str[len]='\0';
 		} /* end if */
 	}
 	else
 	{
-		len = 2050 - (beginlptr - endlptr);
+		len = BUFSIZE - (beginlptr - endlptr);
 		str = (char *) salloc(len+1);
-		strncpy(str,buf+beginlptr, 2049 - beginlptr);
+		strncpy(str,buf+beginlptr, (BUFSIZE-1) - beginlptr);
 		strncat(str,buf, endlptr);
 		str[len]='\0';
 	} /* end if */
@@ -122,15 +124,15 @@ void moveupline()
 	{
 		if (buf[endlptr] == EOF )
 		{
-			if (endlptr==1024)
+			if (endlptr==READSIZE)
 			{
-				if ((i = read(fd, buf+1025, 1024)) != 1024)
-						buf[1025+i] = EOF;
+              if ((i = read(fd, buf+(READSIZE+1), READSIZE)) != READSIZE)
+                buf[(READSIZE+1)+i] = EOF;
 				++endlptr;
 			}
-			else if (endlptr == 2049)
+			else if (endlptr == (BUFSIZE-1))
 			{
-				if ((i = read(fd, buf, 1024)) != 1024)
+				if ((i = read(fd, buf, READSIZE)) != READSIZE)
 					buf[i]=EOF;
 				endlptr = 0;
 			}
@@ -156,8 +158,8 @@ char getbc()
 	if (buf[forwardptr] == EOF)
 		switch(forwardptr)
 		{
-			case 2049:	forwardptr = -1;
-			case 1024:	forwardptr++;
+        case (BUFSIZE-1):	forwardptr = -1;
+			case READSIZE:	forwardptr++;
 			default:	break;
 		}
 	return(ch);
@@ -170,8 +172,8 @@ void ungetbc()
 {
 	switch(--forwardptr)
 	{
-		case -1:	forwardptr = 2049;
-		case 1024:	--forwardptr;
+    case -1:	forwardptr = (BUFSIZE-1);
+		case READSIZE:	--forwardptr;
 	}
 } /* end ungetbc() */
 
@@ -185,7 +187,7 @@ char *getlex()
 	int len;
 	if (lexemeptr < forwardptr)
 	{
-		if ((forwardptr < 1024) || (lexemeptr > 1024))
+		if ((forwardptr < READSIZE) || (lexemeptr > READSIZE))
 		{
 			len = forwardptr - lexemeptr;
 			str = (char *) salloc(len+1);
@@ -196,16 +198,16 @@ char *getlex()
 		{
 			len = (forwardptr - lexemeptr) - 1;
 			str = (char *) salloc(len+1);
-			strncpy(str,buf+lexemeptr,1024 - lexemeptr);
-			strncat(str,buf+1025,forwardptr - 1025);
+			strncpy(str,buf+lexemeptr,READSIZE - lexemeptr);
+			strncat(str,buf+(READSIZE+1),forwardptr - (READSIZE+1));
 			str[len]='\0';
 		} /* end if */
 	}
 	else
 	{
-		len = 2050 - (lexemeptr - forwardptr);
+		len = BUFSIZE - (lexemeptr - forwardptr);
 		str = (char *) salloc(len+1);
-		strncpy(str,buf+lexemeptr, 2049 - lexemeptr);
+		strncpy(str,buf+lexemeptr, (BUFSIZE-1) - lexemeptr);
 		strncat(str,buf, forwardptr);
 		str[len]='\0';
 	} /* end if */
