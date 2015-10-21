@@ -231,7 +231,7 @@
 {IR = 1111 111? ???? ????} {test next bit}
 76:tir := tir + tir; if n then goto 80; 
 
-{IR = 1111 1110 ???? ????} {test next bit}
+{IR = 1111 1110 ???? ????} {DESP}
 {Mask away the bottom 8-bits of instruction}
 77:a := band(ir, smask);
 {Invert them, because we trying to subtract}
