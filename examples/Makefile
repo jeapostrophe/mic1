@@ -3,8 +3,8 @@ all: prom.dat adder.o help
 help:
 	@echo make adder.test
 
-prom.dat: prom.mc
-	../mcc/mcc < $^ > $@
+prom.dat: prom.mc ../mcc/mcc
+	../mcc/mcc < prom.mc > $@
 
 %.test: prom.dat %.o
 	../mic1/mic1 $^ 0 1024
