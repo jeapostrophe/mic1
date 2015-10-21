@@ -12,10 +12,9 @@ lex.yy.o:  lex.yy.c
 lex.yy.c: mic1symasm.ll
 	flex mic1symasm.ll
 
-test: masm
-	./masm < ../examples/adder.asm
-	./masm -s < ../examples/adder.asm
-	./masm -o < ../examples/adder.asm
-
 clean:
 	rm -f *.o masm lex.yy.c
+
+test: masm test.asm test.o.expected
+	./masm < test.asm > test.o
+	diff -u test.o test.o.expected
