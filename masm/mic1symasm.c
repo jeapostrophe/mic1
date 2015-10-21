@@ -56,7 +56,7 @@ void require_int(char n, const char *op) {
   str_n(n, atoi(yytext));
 }
 
-void emit_label_op(const char *op, const char *code) {
+void emit_label_op(char n, const char *op, const char *code) {
   int tok;
   switch(tok=yylex()){
   case INTEG:
@@ -72,7 +72,7 @@ void emit_label_op(const char *op, const char *code) {
   }
 }
 
-void emit_fixed_op(const char *code) {
+void emit_fixed_op(char n, const char *op, const char *code) {
   fprintf(p1, "%d  %s", pc, code);
   for ( int i = strlen(code); i < 16; i++ ) {
     fprintf(p1, "0");
@@ -99,30 +99,30 @@ int main(int argc, char *argv[]) {
   unlink("/tmp/passone");
   while( (tok=yylex()) ){
     switch(tok){
-    case LODD: emit_label_op("LODL", "0000"); break;
-    case STOD: emit_label_op("STOD", "0001"); break;
-    case ADDD: emit_label_op("ADDD", "0010"); break;
-    case SUBD: emit_label_op("SUBD", "0011"); break;
-    case JPOS: emit_label_op("JPOS", "0100"); break;
-    case JZER: emit_label_op("JZER", "0101"); break;
-    case JUMP: emit_label_op("JUMP", "0110"); break;
-    case LOCO: emit_label_op("LOCO", "0111"); break;
-    case LODL: emit_int_op(12, "LODL", "1000"); break;
-    case STOL: emit_int_op(12, "STOL", "1001"); break;
-    case ADDL: emit_int_op(12, "ADDL", "1010"); break;
-    case SUBL: emit_int_op(12, "SUBL", "1011"); break;
-    case JNEG: emit_label_op("JNEG", "1100"); break;
-    case JNZE: emit_label_op("JNZE", "1101"); break;
-    case CALL: emit_label_op("CALL", "1110"); break;
-    case PSHI: emit_fixed_op("1111000"); break;
-    case POPI: emit_fixed_op("1111001"); break;
-    case PUSH: emit_fixed_op("1111010"); break;
-    case  POP: emit_fixed_op("1111011"); break;
-    case RETN: emit_fixed_op("1111100"); break;
-    case SWAP: emit_fixed_op("1111101"); break;
-    case INSP: emit_int_op( 8, "INSP", "11111100"); break;
-    case DESP: emit_int_op( 8, "DESP", "11111110"); break;
-    case HALT: emit_fixed_op("1111111"); break;
+    case LODD: emit_label_op(12, "LODL", "0000"); break;
+    case STOD: emit_label_op(12, "STOD", "0001"); break;
+    case ADDD: emit_label_op(12, "ADDD", "0010"); break;
+    case SUBD: emit_label_op(12, "SUBD", "0011"); break;
+    case JPOS: emit_label_op(12, "JPOS", "0100"); break;
+    case JZER: emit_label_op(12, "JZER", "0101"); break;
+    case JUMP: emit_label_op(12, "JUMP", "0110"); break;
+    case LOCO: emit_label_op(12, "LOCO", "0111"); break;
+    case LODL:   emit_int_op(12, "LODL", "1000"); break;
+    case STOL:   emit_int_op(12, "STOL", "1001"); break;
+    case ADDL:   emit_int_op(12, "ADDL", "1010"); break;
+    case SUBL:   emit_int_op(12, "SUBL", "1011"); break;
+    case JNEG: emit_label_op(12, "JNEG", "1100"); break;
+    case JNZE: emit_label_op(12, "JNZE", "1101"); break;
+    case CALL: emit_label_op(12, "CALL", "1110"); break;
+    case PSHI: emit_fixed_op( 0, "PSHI", "1111000"); break;
+    case POPI: emit_fixed_op( 0, "POPI", "1111001"); break;
+    case PUSH: emit_fixed_op( 0, "PUSH", "1111010"); break;
+    case  POP: emit_fixed_op( 0,  "POP", "1111011"); break;
+    case RETN: emit_fixed_op( 0, "RETN", "1111100"); break;
+    case SWAP: emit_fixed_op( 0, "SWAP", "1111101"); break;
+    case INSP:   emit_int_op( 8, "INSP", "11111100"); break;
+    case DESP:   emit_int_op( 8, "DESP", "11111110"); break;
+    case HALT: emit_fixed_op( 0, "HALT", "11111111"); break;
 
     case INTEG:
       str_16(yytext);
