@@ -32,8 +32,6 @@ void str_n(char n, short num) {
   }
 }
 
-void str_6(char *cstr) { str_n(6, atoi(cstr)); }
-void str_8(char *cstr) { str_n(8, atoi(cstr)); }
 void str_12(char *cstr) { str_n(12, atoi(cstr)); }
 void str_16(char *cstr) { str_n(16, atoi(cstr)); }
 void bstr_16(unsigned short bin_num) { str_n(16, bin_num); }
@@ -59,6 +57,22 @@ void require_int(char n, const char *op) {
   str_n(n, atoi(yytext));
 }
 
+void emit_label_op(const char *op, const char *code) {
+  int tok;
+  switch(tok=yylex()){
+  case INTEG:
+    str_12(yytext);
+    fprintf(p1, "%d  %s%.12s\n", pc, code, cstr_16);
+    break;
+  case LABEL:
+    fprintf(p1, "%d  U%s000000000000    %s\n", pc, code, yytext);
+    break;
+  default:
+    fprintf(stderr, "Bad operand after %s is %s on line %d\n", op, yytext, pc);
+    exit(1);
+  }
+}
+
 int main(int argc, char *argv[]) {
   int tok = 0, i = 0, dump_tab = 0, linum = 0, object_file = 0;
   unsigned short temp = 0;
@@ -73,110 +87,13 @@ int main(int argc, char *argv[]) {
   unlink("/tmp/passone");
   while( (tok=yylex()) ){
     switch(tok){
-    case LODD:
-      switch(tok=yylex()){
-      case INTEG:
-        str_12(yytext);
-        fprintf(p1,"%d  0000%.12s\n", pc, cstr_16);
-        break;
-      case LABEL:
-        fprintf(p1,"%d  U0000000000000000    %s\n", pc, yytext);
-        break;
-      default:
-        fprintf(stderr,"Bad operand after LODD is %s on line %d\n",yytext, pc);
-        exit(1);
-      }
-      break;
-
-    case STOD:
-      switch(tok=yylex()){
-      case INTEG:
-        str_12(yytext);
-        fprintf(p1,"%d  0001%.12s\n", pc, cstr_16);
-        break;
-      case LABEL:
-        fprintf(p1,"%d  U0001000000000000    %s\n", pc, yytext);
-        break;
-      default:
-        fprintf(stderr,"Bad operand after STOD is %s on line %d\n",yytext, pc);
-        exit(1);
-      }
-      break;
-
-    case ADDD:
-      switch(tok=yylex()){
-      case INTEG:
-        str_12(yytext);
-        fprintf(p1,"%d  0010%.12s\n", pc, cstr_16);
-        break;
-      case LABEL:
-        fprintf(p1,"%d  U0010000000000000    %s\n", pc, yytext);
-        break;
-      default:
-        fprintf(stderr,"Bad operand after ADDD is %s on line %d\n",yytext, pc);
-        exit(1);
-      }
-      break;
-
-    case SUBD:
-      switch(tok=yylex()){
-      case INTEG:
-        str_12(yytext);
-        fprintf(p1,"%d  0011%.12s\n", pc, cstr_16);
-        break;
-      case LABEL:
-        fprintf(p1,"%d  U0011000000000000    %s\n", pc, yytext);
-        break;
-      default:
-        fprintf(stderr,"Bad operand after SUBD is %s on line %d\n",yytext, pc);
-        exit(1);
-      }
-      break;
-
-    case JPOS:
-      switch(tok=yylex()){
-      case INTEG:
-        str_12(yytext);
-        fprintf(p1,"%d  0100%.12s\n",  pc, cstr_16);
-        break;
-      case LABEL:
-        fprintf(p1,"%d  U0100000000000000    %s\n", pc, yytext);
-        break;
-      default:
-        fprintf(stderr,"Bad operand after JPOS is %s on line %d\n",yytext, pc);
-        exit(1);
-      }
-      break;
-
-    case JZER:
-      switch(tok=yylex()){
-      case INTEG:
-        str_12(yytext);
-        fprintf(p1,"%d  0101%.12s\n", pc, cstr_16);
-        break;
-      case LABEL:
-        fprintf(p1,"%d  U0101000000000000    %s\n", pc, yytext);
-        break;
-      default:
-        fprintf(stderr,"Bad operand after JZER is %s on line %d\n",yytext, pc);
-        exit(1);
-      }
-      break;
-
-    case JUMP:
-      switch(tok=yylex()){
-      case INTEG:
-        str_12(yytext);
-        fprintf(p1,"%d  0110%.12s\n", pc, cstr_16);
-        break;
-      case LABEL:
-        fprintf(p1,"%d  U0110000000000000    %s\n", pc, yytext);
-        break;
-      default:
-        fprintf(stderr,"Bad operand after JUMP is %s on line %d\n",yytext, pc);
-        exit(1);
-      }
-      break;
+    case LODD: emit_label_op("LODL", "0000"); break;
+    case STOD: emit_label_op("STOD", "0001"); break;
+    case ADDD: emit_label_op("ADDD", "0010"); break;
+    case SUBD: emit_label_op("SUBD", "0011"); break;
+    case JPOS: emit_label_op("JPOS", "0100"); break;
+    case JZER: emit_label_op("JZER", "0101"); break;
+    case JUMP: emit_label_op("JUMP", "0110"); break;
 
     case LOCO:
       switch(tok=yylex()){
@@ -217,50 +134,9 @@ int main(int argc, char *argv[]) {
       fprintf(p1,"%d  1011%.12s\n", pc, cstr_16);
       break;
 
-    case JNEG:
-      switch(tok=yylex()){
-      case INTEG:
-        str_12(yytext);
-        fprintf(p1,"%d  1100%.12s\n", pc, cstr_16);
-        break;
-      case LABEL:
-        fprintf(p1,"%d  U1100000000000000    %s\n", pc, yytext);
-        break;
-      default:
-        fprintf(stderr,"Bad operand after JNEG is %s on line %d\n",yytext, pc);
-        exit(1);
-      }
-      break;
-
-    case JNZE:
-      switch(tok=yylex()){
-      case INTEG:
-        str_12(yytext);
-        fprintf(p1,"%d  1101%.12s\n", pc, cstr_16);
-        break;
-      case LABEL:
-        fprintf(p1,"%d  U1101000000000000    %s\n", pc, yytext);
-        break;
-      default:
-        fprintf(stderr,"Bad operand after JNZE is %s on line %d\n",yytext, pc);
-        exit(1);
-      }
-      break;
-
-    case CALL:
-      switch(tok=yylex()){
-      case INTEG:
-        str_12(yytext);
-        fprintf(p1,"%d  1110%.12s\n", pc, cstr_16);
-        break;
-      case LABEL:
-        fprintf(p1,"%d  U1110000000000000    %s\n", pc, yytext);
-        break;
-      default:
-        fprintf(stderr,"Bad operand after CALL is %s on line %d\n",yytext, pc);
-        exit(1);
-      }
-      break;
+    case JNEG: emit_label_op("JNEG", "1100"); break;
+    case JNZE: emit_label_op("JNZE", "1101"); break;
+    case CALL: emit_label_op("CALL", "1110"); break;
 
     case PSHI:
       fprintf(p1,"%d  1111000000000000\n",pc);
