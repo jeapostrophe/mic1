@@ -271,21 +271,11 @@ void generate_code(int linum) {
         exit(27);
       }
 
-      for (int i=0; i<12; i++) {
-        cstr_16[i] = '0';
-      }
-      cstr_16[12] = '\0';
-
-      mask = 2048;
-      for (int i=0; i<12; i++) {
-        if (sym_val & mask) {
-          cstr_16[i] = '1';
-        }
-        mask >>= 1;
-      }
+      str_n(12, sym_val);
       for (int i=0; i<12; i++) {
         instruction[i+5] = cstr_16[i];
       }
+      
       printf("%s%s\n", (linum ? linbuf: "\0"), &instruction[1]);
     } else {
       printf("%s%s\n", (linum ? linbuf: "\0"), instruction);
