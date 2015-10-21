@@ -9,7 +9,7 @@
 #include "dbuffer.h"
 #include "scanner.h"
 
-enum debuglevels debuglevel = 0;
+enum debuglevels debuglevel = 0; //(scanbug_m|symbug_m|parsebug_m);
 bool advanced = true;
 bool panicmode = false;
 
