@@ -10,3 +10,8 @@ clean:
 
 tar: clean
 	$(foreach dir,$(DIRS),tar czvf $(dir).tar.gz $(dir);)
+
+test:
+	cd mcc && $(MAKE)
+	cd examples && $(MAKE) prom.dat
+	diff -u examples/prom.dat examples/prom.dat.expected 
