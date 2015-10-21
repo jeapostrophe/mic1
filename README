@@ -20,7 +20,6 @@ The code was written over the years by
 reflected in the Git logs)
 
 TODO list
-- Add comments to prom.mc (use {})
 - Document the tools
 - Add symbol table export from masm to mic1 debugger
 - expand masm symbol character set to include _ . and -
