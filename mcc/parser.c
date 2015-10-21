@@ -291,7 +291,10 @@ void program()
 	trace("program");
 	while (current.token != done)
 	{
-		if (current.token == iconst)
+        if (current.token == nline) {
+            match(nline); continue;
+        }
+	    if (current.token == iconst)
 		{
 			match(iconst);
 			match(colon);
