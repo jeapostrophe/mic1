@@ -50,12 +50,13 @@ int  label_pc = -1;
 unsigned short pc = 0;
 SYMTABENTRY *symtab = NULL;
 
-void require_int(const char *op) {
+void require_int(char n, const char *op) {
   int tok;
   if((tok=yylex()) != INTEG){
     fprintf(stderr, "Bad operand after %s is %s\n", op, yytext);
     exit(1);
   }
+  str_n(n, atoi(yytext));
 }
 
 int main(int argc, char *argv[]) {
@@ -197,26 +198,22 @@ int main(int argc, char *argv[]) {
       break;
 
     case LODL:
-      require_int("LODL");
-      str_12(yytext);
+      require_int(12, "LODL");
       fprintf(p1,"%d  1000%.12s\n", pc, cstr_16);
       break;
 
     case STOL:
-      require_int("STOL");
-      str_12(yytext);
+      require_int(12, "STOL");
       fprintf(p1,"%d  1001%.12s\n", pc, cstr_16);
       break;
 
     case ADDL:
-      require_int("ADDL");
-      str_12(yytext);
+      require_int(12, "ADDL");
       fprintf(p1,"%d  1010%.12s\n",  pc, cstr_16);
       break;
 
     case SUBL:
-      require_int("SUBL");
-      str_12(yytext);
+      require_int(12, "SUBL");
       fprintf(p1,"%d  1011%.12s\n", pc, cstr_16);
       break;
 
@@ -290,14 +287,12 @@ int main(int argc, char *argv[]) {
       break;
 
     case INSP:
-      require_int("INSP");
-      str_8(yytext);
+      require_int(8, "INSP");
       fprintf(p1,"%d  11111100%.8s\n", pc, cstr_16);
       break;
 
     case DESP:
-      require_int("DESP");
-      str_8(yytext);
+      require_int(8, "DESP");
       fprintf(p1,"%d  11111110%.8s\n",  pc, cstr_16);
       break;
 
@@ -322,7 +317,7 @@ int main(int argc, char *argv[]) {
       break;
 
     case LOC:
-      require_int(".LOC");
+      require_int(12, ".LOC");
       if((temp = ((unsigned short)atoi(yytext) )) < pc){
         fprintf(stderr,"Bad operand after .LOC is %s, TOO SMALL !\n",yytext);
         exit(1);
