@@ -4,6 +4,8 @@
 #include <unistd.h>
 
 #include "mic1symasm.h"
+extern int yylex(void);
+extern char* yytext;
 
 #define HEADERS     1
 #define NO_HEADERS  0
@@ -14,11 +16,28 @@ typedef struct nament {
   struct nament *next;
 } SYMTABENTRY;
 
-void str_6(char *);
-void str_8(char *);
-void str_12(char *);
-void str_16(char *);
-void bstr_16(unsigned short);
+char cstr_16[17];
+void str_n(char n, short num) {
+  for (int i=0; i<16; i++) {
+    cstr_16[i] = '0';
+  }
+  cstr_16[16] = '\0';
+
+  unsigned int mask = 1 << (n-1);
+  for (int i=0; i<16; i++) {
+    if (num & mask) {
+      cstr_16[i] = '1';
+    }
+    mask >>= 1;
+  }
+}
+
+void str_6(char *cstr) { str_n(6, atoi(cstr)); }
+void str_8(char *cstr) { str_n(8, atoi(cstr)); }
+void str_12(char *cstr) { str_n(12, atoi(cstr)); }
+void str_16(char *cstr) { str_n(16, atoi(cstr)); }
+void bstr_16(unsigned short bin_num) { str_n(16, bin_num); }
+
 void generate_code(int);
 void update_sym_table(char *);
 void search_sym_table(char *);
@@ -26,11 +45,7 @@ void print_first_pass(int);
 void append_table(void);
 void dump_table(void);
 
-extern int yylex(void);
-extern char* yytext;
-
 FILE *p1;
-char cstr_16[17];
 int  label_pc = -1;
 unsigned short pc = 0;
 SYMTABENTRY *symtab = NULL;
@@ -495,89 +510,4 @@ void search_sym_table(char *symbol) {
   strcpy(element->name, symbol);
   element->next = symtab;
   symtab = element;
-}
-
-void str_6(char *cstr) {
-  unsigned short str_val = (unsigned short)atoi(cstr);
-
-  for (int i=0; i<6; i++) {
-    cstr_16[i] = '0';
-  }
-  cstr_16[6] = '\0';
-
-  int mask = 32;
-  for(int i=0; i<6; i++){
-    if(str_val & mask) {
-      cstr_16[i] = '1';
-    }
-    mask >>= 1;
-  }
-}
-
-void str_8(char *cstr) {
-  unsigned short str_val = (unsigned short)atoi(cstr);
-
-  for (int i=0; i<8; i++) {
-    cstr_16[i] = '0';
-  }
-  cstr_16[8] = '\0';
-
-  int mask = 128;
-  for (int i=0; i<8; i++) {
-    if (str_val & mask) {
-      cstr_16[i] = '1';
-    }
-    mask >>= 1;
-  }
-}
-
-void str_12(char *cstr) {
-  unsigned short str_val = (unsigned short)atoi(cstr);
-
-  for (int i=0; i<12; i++) {
-    cstr_16[i] = '0';
-  }
-  cstr_16[12] = '\0';
-
-  int mask = 2048;
-  for (int i=0; i<12; i++){
-    if (str_val & mask) {
-      cstr_16[i] = '1';
-    }
-    mask >>= 1;
-  }
-}
-
-void str_16(char *cstr) {
-  short str_val = (short)atoi(cstr);
-
-  for (int i=0; i<16; i++) {
-    cstr_16[i] = '0';
-  }
-  cstr_16[16] = '\0';
-
-  int mask = (1024 * 32);
-  for (int i=0; i<16; i++) {
-    if (str_val & mask) {
-      cstr_16[i] = '1';
-    }
-    mask >>= 1;
-  }
-}
-
-void bstr_16(unsigned short bin_num) {
-  short str_val = bin_num;
-
-  for (int i=0; i<16; i++){
-    cstr_16[i] = '0';
-  }
-  cstr_16[16] = '\0';
-
-  int mask = (1024 * 32);
-  for (int i=0; i<16; i++) {
-    if(str_val & mask) {
-      cstr_16[i] = '1';
-    }
-    mask >>= 1;
-  }
 }
