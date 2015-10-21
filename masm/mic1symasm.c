@@ -170,10 +170,10 @@ void generate_first_pass() {
 }
 
 int main(int argc, char *argv[]) {
-  int dump_tab = 0, linum = 0, object_file = 0;
+  int linum = 0, object_file = 0;
 
   if (argc > 1 && (strcmp(argv[1], "-s") == 0)) {
-    dump_tab = linum = 1;
+    linum = 1;
   } else if (argc > 1 && (strcmp(argv[1], "-o") == 0)) {
     object_file = 1;
   }
@@ -193,10 +193,7 @@ int main(int argc, char *argv[]) {
   }
   
   generate_code(linum);
-  
-  if (dump_tab) {
-    dump_table();
-  }
+  dump_table();
  
   return 0;
 }
@@ -222,14 +219,11 @@ void print_first_pass(int headers) {
 void dump_table(void) {
   FILE *fd;
   fd = popen("sort", "w");
-  printf("\n  SYMBOL TABLE \n");
-  printf("***********************************************\n");
   for (struct nament *list = symtab; list != NULL; list = list->next) {
-    fprintf(fd,"%-25s %4d\n",list->name, list->addr);
+    fprintf(fd,"# %-25s %4d\n",list->name, list->addr);
   }
   fclose(fd);
   wait(NULL);
-  printf("***********************************************\n");
 }
 
 void append_table(void) {
