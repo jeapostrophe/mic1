@@ -32,7 +32,6 @@ void str_n(char n, short num) {
   }
 }
 
-void str_12(char *cstr) { str_n(12, atoi(cstr)); }
 void str_16(char *cstr) { str_n(16, atoi(cstr)); }
 void bstr_16(unsigned short bin_num) { str_n(16, bin_num); }
 
@@ -61,7 +60,7 @@ void emit_label_op(const char *op, const char *code) {
   int tok;
   switch(tok=yylex()){
   case INTEG:
-    str_12(yytext);
+    str_n(12, atoi(yytext));
     fprintf(p1, "%d  %s%.12s\n", pc, code, cstr_16);
     break;
   case LABEL:
