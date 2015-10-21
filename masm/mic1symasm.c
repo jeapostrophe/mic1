@@ -50,6 +50,14 @@ int  label_pc = -1;
 unsigned short pc = 0;
 SYMTABENTRY *symtab = NULL;
 
+void require_int(const char *op) {
+  int tok;
+  if((tok=yylex()) != INTEG){
+    fprintf(stderr, "Bad operand after %s is %s\n", op, yytext);
+    exit(1);
+  }
+}
+
 int main(int argc, char *argv[]) {
   int tok = 0, i = 0, dump_tab = 0, linum = 0, object_file = 0;
   unsigned short temp = 0;
@@ -189,37 +197,25 @@ int main(int argc, char *argv[]) {
       break;
 
     case LODL:
-      if((tok=yylex()) != INTEG){
-        fprintf(stderr,"Bad operand after LODL is %s\n",yytext);
-        exit(1);
-      }
+      require_int("LODL");
       str_12(yytext);
       fprintf(p1,"%d  1000%.12s\n", pc, cstr_16);
       break;
 
     case STOL:
-      if((tok=yylex()) != INTEG){
-        fprintf(stderr,"Bad operand after STOL is %s\n",yytext);
-        exit(1);
-      }
+      require_int("STOL");
       str_12(yytext);
       fprintf(p1,"%d  1001%.12s\n", pc, cstr_16);
       break;
 
     case ADDL:
-      if((tok=yylex()) != INTEG){
-        fprintf(stderr,"Bad operand after ADDL is %s\n",yytext);
-        exit(1);
-      }
+      require_int("ADDL");
       str_12(yytext);
       fprintf(p1,"%d  1010%.12s\n",  pc, cstr_16);
       break;
 
     case SUBL:
-      if((tok=yylex()) != INTEG){
-        fprintf(stderr,"Bad operand after SUBL is %s\n",yytext);
-        exit(1);
-      }
+      require_int("SUBL");
       str_12(yytext);
       fprintf(p1,"%d  1011%.12s\n", pc, cstr_16);
       break;
@@ -294,19 +290,13 @@ int main(int argc, char *argv[]) {
       break;
 
     case INSP:
-      if((tok=yylex()) != INTEG){
-        fprintf(stderr,"Bad operand after INSP is %s\n",yytext);
-        exit(1);
-      }
+      require_int("INSP");
       str_8(yytext);
       fprintf(p1,"%d  11111100%.8s\n", pc, cstr_16);
       break;
 
     case DESP:
-      if((tok=yylex()) != INTEG){
-        fprintf(stderr,"Bad operand after DESP is %s\n",yytext);
-        exit(1);
-      }
+      require_int("DESP");
       str_8(yytext);
       fprintf(p1,"%d  11111110%.8s\n",  pc, cstr_16);
       break;
@@ -332,15 +322,11 @@ int main(int argc, char *argv[]) {
       break;
 
     case LOC:
-      if((tok=yylex()) != INTEG){
-        fprintf(stderr,"Bad operand after .LOC is %s\n",yytext);
-        exit(1);
-      }
+      require_int(".LOC");
       if((temp = ((unsigned short)atoi(yytext) )) < pc){
         fprintf(stderr,"Bad operand after .LOC is %s, TOO SMALL !\n",yytext);
         exit(1);
       }
-
       pc = temp - 1;
       break;
 
