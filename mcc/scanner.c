@@ -52,13 +52,17 @@ void getassignorcolontok(tokattr *pair)
 
 /*----------------------------------------------------------------------*/
 
+int isid(int ch) {
+  return isalnum(ch) || ch == '_' || ch == '?';
+}
+
 void getidtok(tokattr *pair)
 {
 	char ch;
 	do
 	{
 		ch = getbc();
-	} while (isalnum(ch));
+	} while (isid(ch));
 	if (ch == EOF)
 	{
 		eof = 1;
@@ -66,14 +70,14 @@ void getidtok(tokattr *pair)
 	}
 	ungetbc();
 	pair->token = id;
-	pair->attr.entry = lookup(getlex());
-	if (pair->attr.entry == NULL)
-	{
-      printerr(parseerr, unknownid, 0, NULL);
-		pair->token = 0;
-	}
-	else
-		pair->token = pair->attr.entry->token;
+    char *thelex = getlex();
+	pair->attr.entry = lookup(thelex);
+	if (pair->attr.entry == NULL) {
+      pair->attr.id = malloc(strlen(thelex));
+      strcpy(pair->attr.id, thelex);
+	} else {
+      pair->token = pair->attr.entry->token;
+    }
 }
 
 /*----------------------------------------------------------------------*/

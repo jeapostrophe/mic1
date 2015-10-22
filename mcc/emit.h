@@ -9,6 +9,8 @@
 void initemit();
 void unlinkoutfile();
 void dumpword();
+void emit_change_outfile(FILE *stream);
+void copy_instruction_to_word(const char *instruction);
 
 void genread(bool set);
 void genwrite(bool set);
@@ -22,7 +24,8 @@ void gencreg(enreg dreg);
 void gencond(int c);
 void genshift(int f);
 void genalu(int f);
-void genaddr(int addr);
+void genaddr(char *label);
+void genrealaddr(int addr);
 void genhalt();
 void genabreg(enreg dreg);
 void itob(int *a, int size, int num);

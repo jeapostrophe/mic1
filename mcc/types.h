@@ -17,8 +17,9 @@ typedef enum
 
 union attribute
 {
-	struct s_symnode *entry;
-	int num;
+  char *id;
+  struct s_symnode *entry;
+  int num;
 };
 
 typedef struct s_tokattr

@@ -9,6 +9,18 @@
 #include "errors.h"
 
 static int word[32];
+static int word_haslabel;
+static char *word_label;
+
+void copy_instruction_to_word(const char *instruction) {
+  for (int i = 0; i < 32; i++) {
+    if (instruction[i] == '0') {
+      word[i] = 0;
+    } else {
+      word[i] = 1;
+    }
+  }
+}
 
 /*----------------------------------------------------------------------*/
 
@@ -28,6 +40,13 @@ void initemit()
 *****/
 	for(i = 0; i < 32; i++)
 		word[i] = -1;
+
+    word_haslabel = 0;
+    word_label = NULL;
+}
+
+void emit_change_outfile(FILE *stream) {
+  outfile = stream;
 }
 
 /*----------------------------------------------------------------------*/
@@ -46,6 +65,12 @@ void dumpword()
 {
 	int i;
 	if (panicmode) return;
+
+    if (word_haslabel) {
+      fprintf(outfile, "U ");
+    }
+    word_haslabel = 0;
+    
 	for (i=0; i < 32; i++)
 	{
 		if (word[i] < 1)
@@ -54,6 +79,12 @@ void dumpword()
 			putc('1', outfile);
 		word[i] = -1;
 	}
+
+    if (word_label != NULL) {
+      fprintf(outfile, " %s", word_label);
+    }
+    word_label = NULL;
+    
 	putc('\n', outfile);
 }
 
@@ -250,19 +281,23 @@ void genareg(enreg dreg)
 
 /*----------------------------------------------------------------------*/
 
-void genaddr(int addr)
+void genaddr(char *label) {
+  if (word_haslabel)
+    printerr(semanticerr, reset, 0, "jump address");
+
+  word_haslabel = 1;
+  word_label = label;
+}
+
+void genrealaddr(int addr)
 {
 	int temparray[8];
 	if (panicmode) return;
 	{
 		int i;
 		itob(temparray, 8, addr);
-		if (word[24] == -1)
-			for (i = 0; i < 8; i++)
-				word[24+i] = temparray[i];
-		else
-			if (!isequalb(temparray, word+24, 8))
-              printerr(semanticerr, reset, 0, "jump address");
+        for (i = 0; i < 8; i++)
+          word[24+i] = temparray[i];
 	}
 }
 
