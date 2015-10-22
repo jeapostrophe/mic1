@@ -73,7 +73,7 @@ void getidtok(tokattr *pair)
     char *thelex = getlex();
 	pair->attr.entry = lookup(thelex);
 	if (pair->attr.entry == NULL) {
-      pair->attr.id = malloc(strlen(thelex));
+      pair->attr.id = malloc(strlen(thelex)+1);
       strcpy(pair->attr.id, thelex);
 	} else {
       pair->token = pair->attr.entry->token;
