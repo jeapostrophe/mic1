@@ -1,5 +1,5 @@
 %{
-#include "mic1symasm.h"
+#include "masm.h"
 %}
 
 %%

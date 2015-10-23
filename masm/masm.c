@@ -3,15 +3,9 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "mic1symasm.h"
+#include "masm.h"
 extern int yylex(void);
 extern char* yytext;
-
-typedef struct nament {
-  char           name[26];
-  int            addr;
-  struct nament *next;
-} SYMTABENTRY;
 
 char cstr_16[17];
 void str_n(char n, short num) {
@@ -42,16 +36,6 @@ void dump_table(void);
 FILE *p1;
 int  label_pc = -1;
 unsigned short pc = 0;
-SYMTABENTRY *symtab = NULL;
-
-void require_int(char n, const char *op) {
-  int tok;
-  if((tok=yylex()) != INTEG){
-    fprintf(stderr, "Bad operand after %s is %s\n", op, yytext);
-    exit(1);
-  }
-  str_n(n, atoi(yytext));
-}
 
 void emit_label_op(char n, const char *op, const char *code) {
   int tok;
@@ -75,6 +59,15 @@ void emit_fixed_op(char n, const char *op, const char *code) {
     fprintf(p1, "0");
   }
   fprintf(p1, "\n");
+}
+
+void require_int(char n, const char *op) {
+  int tok;
+  if((tok=yylex()) != INTEG){
+    fprintf(stderr, "Bad operand after %s is %s\n", op, yytext);
+    exit(1);
+  }
+  str_n(n, atoi(yytext));
 }
 
 void emit_int_op(char n, const char *op, const char* code) {
@@ -172,8 +165,9 @@ int main(int argc, char *argv[]) {
     object_file = 1;
   }
 
-  p1 = fopen("/tmp/passone", "w+");
-  unlink("/tmp/passone");
+  char *passone = "/tmp/masm.passone";
+  p1 = fopen(passone, "w+");
+  unlink(passone);
   generate_first_pass();
   
   if (object_file) {
@@ -196,10 +190,18 @@ void print_first_pass() {
   }
 }
 
+typedef struct symtab_entry {
+  char name[26];
+  int addr;
+  struct symtab_entry *next;
+} symtab_entry_t;
+
+symtab_entry_t *symtab = NULL;
+
 void dump_table(void) {
   FILE *fd;
   fd = popen("sort", "w");
-  for (struct nament *list = symtab; list != NULL; list = list->next) {
+  for (symtab_entry_t *list = symtab; list != NULL; list = list->next) {
     fprintf(fd,"# %-25s %4d\n",list->name, list->addr);
   }
   fclose(fd);
@@ -208,13 +210,13 @@ void dump_table(void) {
 
 void append_table(void) {
   printf("  %d %s\n", 4096, "x");
-  for (struct nament *list = symtab; list != NULL; list = list->next) {
+  for (symtab_entry_t *list = symtab; list != NULL; list = list->next) {
     printf("    %-25s %4d\n",list->name, list->addr);
   }
 }
 
 int get_sym_val(char *symbol) {
-  for (struct nament *list = symtab; list != NULL; list = list->next) {
+  for (symtab_entry_t *list = symtab; list != NULL; list = list->next) {
     if (strcmp(list->name, symbol) == 0) {
       return(list->addr);
     }
@@ -258,7 +260,7 @@ void generate_code() {
 }
 
 void update_sym_table(char *symbol) {
-  for (struct nament *list = symtab; list; list = list->next) {
+  for (symtab_entry_t *list = symtab; list; list = list->next) {
     if ((strcmp(list->name, symbol)) == 0) {
       list->addr = pc;
       return;
@@ -269,12 +271,12 @@ void update_sym_table(char *symbol) {
 }
 
 void search_sym_table(char *symbol) {
-  for (struct nament *list = symtab; list; list = list->next) {
+  for (symtab_entry_t *list = symtab; list; list = list->next) {
     if (strcmp(list->name, symbol) == 0) {      
       return;
     }
   }
-  struct nament *element = malloc(sizeof (struct nament));
+  symtab_entry_t *element = malloc(sizeof(symtab_entry_t));
   strcpy(element->name, symbol);
   element->next = symtab;
   symtab = element;

@@ -1,16 +1,16 @@
 all: masm
 
-masm: mic1symasm.o lex.yy.o
-	cc -std=c99 -o masm mic1symasm.o lex.yy.o
+masm: masm.o lex.yy.o
+	cc -std=c99 -o masm masm.o lex.yy.o
 
-mic1symasm.o:  mic1symasm.c mic1symasm.h
-	cc -std=c99 -c -g mic1symasm.c
+masm.o:  masm.c masm.h
+	cc -std=c99 -c -g masm.c
 
-lex.yy.o:  lex.yy.c mic1symasm.h
+lex.yy.o:  lex.yy.c masm.h
 	cc -std=c99 -c -g lex.yy.c
 
-lex.yy.c: mic1symasm.ll mic1symasm.h
-	flex mic1symasm.ll
+lex.yy.c: masm.ll masm.h
+	flex masm.ll
 
 clean:
 	rm -f *.o masm lex.yy.c
