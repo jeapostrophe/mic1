@@ -3,13 +3,13 @@ all: masm
 masm: mic1symasm.o lex.yy.o
 	cc -std=c99 -o masm mic1symasm.o lex.yy.o
 
-mic1symasm.o:  mic1symasm.c
+mic1symasm.o:  mic1symasm.c mic1symasm.h
 	cc -std=c99 -c -g mic1symasm.c
 
-lex.yy.o:  lex.yy.c
+lex.yy.o:  lex.yy.c mic1symasm.h
 	cc -std=c99 -c -g lex.yy.c
 
-lex.yy.c: mic1symasm.ll
+lex.yy.c: mic1symasm.ll mic1symasm.h
 	flex mic1symasm.ll
 
 clean:
