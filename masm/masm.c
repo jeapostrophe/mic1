@@ -34,7 +34,6 @@ void append_table(void);
 void dump_table(void);
 
 FILE *p1;
-int  label_pc = -1;
 unsigned short pc = 0;
 
 void emit_label_op(char n, const char *op, const char *code) {
@@ -78,6 +77,8 @@ void emit_int_op(char n, const char *op, const char* code) {
 void generate_first_pass() {
   int tok = 0, i = 0;
   unsigned short temp = 0;
+  int  label_pc = -1;
+
   while( (tok=yylex()) ) {
     switch(tok){
     case LODD: emit_label_op(12, "LODL", "0000"); break;
