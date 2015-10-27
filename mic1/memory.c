@@ -169,7 +169,7 @@ printf("\n %d\n",subcycles);
 			   test_char = btoc(Data);
 			   write(1, &test_char, 1);
                            // printf("%c", btoc(Data));
-			   // fflush(stdout);
+			   fflush(stdout);
 			   MemoryChip3[1023][14] = '1';
 			   MemoryChip3[1023][15] = '0';
                         }
