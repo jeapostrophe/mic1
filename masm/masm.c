@@ -81,7 +81,7 @@ void generate_first_pass() {
 
   while( (tok=yylex()) ) {
     switch(tok){
-    case LODD: emit_label_op(12, "LODL", "0000"); break;
+    case LODD: emit_label_op(12, "LODD", "0000"); break;
     case STOD: emit_label_op(12, "STOD", "0001"); break;
     case ADDD: emit_label_op(12, "ADDD", "0010"); break;
     case SUBD: emit_label_op(12, "SUBD", "0011"); break;
