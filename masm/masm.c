@@ -3,9 +3,15 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "masm.h"
-extern int yylex(void);
-extern char* yytext;
+void generate_code();
+void update_sym_table(char *);
+void search_sym_table(char *);
+void print_first_pass();
+void append_table(void);
+void dump_table(void);
+
+FILE *p1;
+unsigned short pc = 0;
 
 char cstr_16[17];
 void str_n(char n, short num) {
@@ -26,15 +32,11 @@ void str_n(char n, short num) {
 void str_16(char *cstr) { str_n(16, atoi(cstr)); }
 void bstr_16(unsigned short bin_num) { str_n(16, bin_num); }
 
-void generate_code();
-void update_sym_table(char *);
-void search_sym_table(char *);
-void print_first_pass();
-void append_table(void);
-void dump_table(void);
+#ifndef __MASM_AS_LIBRARY__
 
-FILE *p1;
-unsigned short pc = 0;
+#include "masm.h"
+extern int yylex(void);
+extern char* yytext;
 
 void emit_label_op(char n, const char *op, const char *code) {
   int tok;
@@ -181,6 +183,8 @@ int main(int argc, char *argv[]) {
  
   return 0;
 }
+
+#endif
 
 void print_first_pass() {
   char inbuf[81];
