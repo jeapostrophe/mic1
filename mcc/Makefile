@@ -2,7 +2,7 @@
 
 COMP = gcc
 
-CFLGS = -Wall -g
+CFLGS = -Wall -g -std=c99
 
 .c.o:
 	$(COMP) $(CFLGS) -c $<
