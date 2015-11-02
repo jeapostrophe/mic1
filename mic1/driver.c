@@ -38,7 +38,6 @@ extern int            MicroPc;
 
 extern Memory_Chip MemoryChip3 ;
 
-
 int btoi();
 
 int  power2[16] = {1,2,4,8,16,32,64,128,256,512,1024,2048,4096,8192,16384,32768};
@@ -51,209 +50,181 @@ int  nonblock_stdin_channel_flags;
 
 /**** call sequence:   mic1 promfile_name programfile_name pc sp    ****/
 
+#define QUERY_LEN 80
+char query[QUERY_LEN];
+void debugger_read() {
+  memset(query, 0, QUERY_LEN);
+  fgets(query, QUERY_LEN, stdin);
+}
+
+int ensure_valid_addr(int mem_location) {
+  if (mem_location < 0 || mem_location > 4095) {
+    printf("BAD LOCATION VALUE, MUST BE BETWEEN 0 and 4095\n");
+    return 1;
+  }
+  return 0;
+}
+
+void debugger_read_mem_loc(int ml) {
+  AddressBusType Address;
+  char mem_loc[17];
+
+  int mem_location = ml;
+  for (int i=11; i>=0; i--) {
+    if (mem_location >= power2[i]) {
+      Address[11-i] = '1';
+      mem_location -= power2[i];
+    } else {
+      Address[11-i] = '0';
+    }
+  }
+  Address[12] = '\0';
+  ActivateMemory (Address, mem_loc, '1', '0');
+
+  mem_loc[16] = '\0';
+  printf("     the location %4d has value %16s , or %5d  or signed %6d\n", ml, mem_loc, btoi(mem_loc), (short)btoi(mem_loc));
+}
+
+void debugger_show_locations(int ml, int low_mult, int hi_mult, const char *label) {
+  printf("Type the number of %s locations to dump: ", label);
+  debugger_read();
+  
+  int mem_span_magnitude = atoi(query);
+
+  int lo_addr = ml - low_mult*mem_span_magnitude;
+  int hi_addr = ml + hi_mult*mem_span_magnitude;
+  if (ensure_valid_addr(lo_addr)) return;
+  if (ensure_valid_addr(hi_addr)) return;
+
+  for (int m = lo_addr; m <= hi_addr; m++) { 
+    debugger_read_mem_loc(m);
+  }
+}
+
 main (argc, argv)
 int  argc;
 char *argv[];
 {
+  DataBusType    Data ;
+  AddressBusType Address;
+  Bit ReadBit ;
+  Bit WriteBit ;
+  int ClockCycle, mem_location, ml, i, j, m, col, mem_offset;
+  char query_val[QUERY_LEN];
+  char mem_loc[17];
 
-DataBusType    Data ;
-AddressBusType Address ;
-Bit ReadBit ;
-Bit WriteBit ;
-int ClockCycle, mem_location, ml, i, j, m, col, mem_offset;
-char query[80];
-char query_val[80];
-char mem_loc[17];
+  char   promfile[80];
+  char   programfile[80];
+  int    pc, sp;
 
-char   promfile[80];
-char   programfile[80];
-int    pc, sp;
-
-     if((original_stdin_channel_flags = fcntl(0, F_GETFL, 0)) == -1){
+  if((original_stdin_channel_flags = fcntl(0, F_GETFL, 0)) == -1){
 	perror("fnctl failed: ");
 	exit(1);
-     }
+  }
 
-     nonblock_stdin_channel_flags = original_stdin_channel_flags | O_NONBLOCK;
+  nonblock_stdin_channel_flags = original_stdin_channel_flags | O_NONBLOCK;
 
-     switch(argc){
-       case 1:   promfile[0] = '\0';
-                 programfile[0] =  '\0';
-                 pc = -1;
-                 sp = -1;
-                 break;
-       case 2:   strcpy(promfile, argv[1]);
-                 programfile[0] =  '\0';
-                 pc = -1;
-                 sp = -1;
-                 break;
-       case 3:   strcpy(promfile, argv[1]);
-                 strcpy(programfile, argv[2]);
-                 pc = -1;
-                 sp = -1;
-                 break;
-       case 4:   strcpy(promfile, argv[1]);
-                 strcpy(programfile, argv[2]);
-                 pc = atoi(argv[3]);
-                 sp = -1;
-                 break;
-       case 5:   strcpy(promfile, argv[1]);
-                 strcpy(programfile, argv[2]);
-                 pc = atoi(argv[3]);
-                 sp = atoi(argv[4]);
-                 break;
-      default:   fprintf(stderr,"Too many command line arguments, aborting\n");
-                 exit(2);
-       }
+  switch(argc){
+  case 1:   promfile[0] = '\0';
+    programfile[0] =  '\0';
+    pc = -1;
+    sp = -1;
+    break;
+  case 2:   strcpy(promfile, argv[1]);
+    programfile[0] =  '\0';
+    pc = -1;
+    sp = -1;
+    break;
+  case 3:   strcpy(promfile, argv[1]);
+    strcpy(programfile, argv[2]);
+    pc = -1;
+    sp = -1;
+    break;
+  case 4:   strcpy(promfile, argv[1]);
+    strcpy(programfile, argv[2]);
+    pc = atoi(argv[3]);
+    sp = -1;
+    break;
+  case 5:   strcpy(promfile, argv[1]);
+    strcpy(programfile, argv[2]);
+    pc = atoi(argv[3]);
+    sp = atoi(argv[4]);
+    break;
+  default:   fprintf(stderr,"Too many command line arguments, aborting\n");
+    exit(2);
+  }
 
-     BurnInProm (promfile);
-     InitializeMemory (programfile) ;
-     InitializeSymbolTable (programfile) ;
-     InitializePCandStackPointer (pc, sp) ;
-     strcpy (Address, "000000000000") ;
-     strcpy (Data,    "0000000000000000") ;
-     ReadBit  = Zero ;
-     WriteBit = Zero ;
+  BurnInProm (promfile);
+  InitializeMemory (programfile) ;
+  InitializeSymbolTable (programfile) ;
+  InitializePCandStackPointer (pc, sp) ;
+  strcpy (Address, "000000000000") ;
+  strcpy (Data,    "0000000000000000") ;
+  ReadBit  = Zero ;
+  WriteBit = Zero ;
 
  tag: for ( ; ; ) {
-       GeneratePulse () ;
+    GeneratePulse () ;
 
-       if (polled_io == 2 && FirstSubcycle() ) {
-         Set_nonblocking_io();
-         input_char = fgetc(stdin);
-         if (input_char == EOF) input_char = 0;
-         polled_io = 0;
-         //printf("%d.%d read (%d) poll(%d)\n", Cycle(), Subcycle(), input_char, polled_io);
-         MemoryChip3[1021][14] = '1';
-         MemoryChip3[1021][15] = '0';
-         Set_blocking_io();
-       } else {
-         //printf("%d.%d no read\n", Cycle(), Subcycle());
-       }
-       
-       ActivateCpu (Address, Data, &ReadBit, &WriteBit) ;  
-
-       ActivateMemory (Address, Data, ReadBit, WriteBit) ;  
-
-       if ((ReadBit == One) && (WriteBit == One) && ClockCycle != Cycle() ) {
-         Set_blocking_io();
-         break ;
-       }
-     }
-
-     
-    DumpRegisters () ; 
-    ClockCycle = Cycle () ;
-    printf ("\nMicroPC        : %d\n", MicroPc);
-    printf ("Total cycles   : %d\n\n", ClockCycle);
-/***********
-    printf("If you would like to examine memory enter  y  if not enter  n: ");
-    gets(query);
-***********/
-    if(1 || query[0] == 'y' || query[0] == 'Y'){
-      while(1){
-	   printf("Type address to view memory, [q]uit, [c]ontinue, <Enter> for symbol table:\n");
-	   fgets(query, 79, stdin);
-	   if(query[0] == 'c'){
-	      printf("\nThe new PC is  : %s\n\n", ProgramCounter);
-              goto tag;
-	   } else if(query[0] == '\n') {
-         ShowSymbolTable();
-       } else if(query[0] == 'q' || query[0] == 'Q'){
-	      printf("MIC-1 emulator finishing, goodbye\n\n");
-	      exit(1);
-	   } else {
-         sscanf(query, "%s", query_val);
-         ml = mem_location = atoi(LookupSymbol(query_val));
-	      if(mem_location < 0 || mem_location > 4095){
-		printf("BAD LOCATION VALUE, MUST BE BETWEEN 0 and 4095\n");
-		continue;
-	      }
-	      for(i=11; i>=0; i--){
-		if(mem_location >=  power2[i]){
-		      Address[11-i] = '1';
-		      mem_location -= power2[i];
-		}else{
-		      Address[11-i] = '0';
-	        }
-	      }
-	      Address[12] = '\0';
-	      ActivateMemory (Address, mem_loc, '1', '0');
-
-	      mem_loc[16] = '\0';
-	      printf("     the location %4d has value %16s , or %5d  or signed %6d\n",
-                               ml, mem_loc, btoi(mem_loc), (short)btoi(mem_loc));
-	      printf("Type  <Enter>  to continue debugging\nType        q  to quit\nType        f for forward range\nType        b for backward range:\n");
-		fgets(query, 79, stdin);
-           if(query[0] == 'q' | query[0] == 'Q'){
-              printf("MIC-1 emulator finishing, goodbye\n\n");
-              exit(1);
-           }else{
-		if (query[0] == 'f' || query[0] == 'F'){
-			printf("Type the number of forward locations to dump: ");
-			fgets(query, 79, stdin);
-			mem_offset = atoi(query); 
-			if (ml + mem_offset > 4091){
-			  printf("BAD OFFSET VALUE, GOES BEYOND 4091\n");
-                	  continue;
-			}
-			  /********************** continue here *******/
-			for(m=0; m<mem_offset; m++){ 
-			 mem_location = ml + m + 1;
-                         for(i=11; i>=0; i--){
-                           if(mem_location >=  power2[i]){
-                             Address[11-i] = '1';
-                             mem_location -= power2[i];
-                           }else{
-                             Address[11-i] = '0';
-                           }
-                         }
-                         Address[12] = '\0';
-                         ActivateMemory (Address, mem_loc, '1', '0');
-
-                         mem_loc[16] = '\0';
-                         printf("     the location %4d has value %16s , or %5d  or signed %6d\n" ,
-                          (ml + m + 1), mem_loc, btoi(mem_loc), (short)btoi(mem_loc));
-			}
-		 }else{	  
-                      if (query[0] == 'b' || query[0] == 'B'){
-                        printf("Type the number of reverse locations to dump: ");
-			fgets(query, 79, stdin);
-                        mem_offset = atoi(query);
-                        if (ml - mem_offset < 0){
-                          printf("BAD OFFSET VALUE, GOES BELOW 0\n");
-                          continue;
-                        }
-                          /********************** continue here *******/
-                        for(m=0; m<mem_offset; m++){
-                         mem_location = (ml - (m + 1));
-                         for(i=11; i>=0; i--){
-                           if(mem_location >=  power2[i]){
-                             Address[11-i] = '1';
-                             mem_location -= power2[i];
-                           }else{
-                             Address[11-i] = '0';
-                           }
-                         }
-                         Address[12] = '\0';
-                         ActivateMemory (Address, mem_loc, '1', '0');
-
-                         mem_loc[16] = '\0';
-                         printf("     the location %4d has value %16s , or %5d  or signed %6d\n" ,
-                          (ml - (m + 1)), mem_loc, btoi(mem_loc), (short)btoi(mem_loc));
-			}
-		       }else continue;
-		   }
-		}
-		continue;
-/**************************************************************************/
-  	    }
-	  }
+    if (polled_io == 2 && FirstSubcycle() ) {
+      Set_nonblocking_io();
+      input_char = fgetc(stdin);
+      if (input_char != EOF) {
+        polled_io = 0;
+        //printf("%d.%d read (%d) poll(%d)\n", Cycle(), Subcycle(), input_char, polled_io);
+        MemoryChip3[1021][14] = '1';
+        MemoryChip3[1021][15] = '0';
+        Set_blocking_io();
       }
-              printf("MIC-1 emulator finishing, goodbye\n\n");
-              exit(1);
+    } else {
+      //printf("%d.%d no read\n", Cycle(), Subcycle());
+    }
+       
+    ActivateCpu (Address, Data, &ReadBit, &WriteBit) ;  
+    ActivateMemory (Address, Data, ReadBit, WriteBit) ;  
 
+    // Escape to the debugger
+    if ((ReadBit == One) && (WriteBit == One) && ClockCycle != Cycle() ) {
+      Set_blocking_io();
+      break ;
+    }
+  }
+     
+  DumpRegisters () ; 
+  ClockCycle = Cycle () ;
+  printf ("\nMicroPC        : %d\n", MicroPc);
+  printf ("Total cycles   : %d\n\n", ClockCycle);
 
+  while (1) {
+    printf("Type address to view memory, [q]uit, [c]ontinue, <Enter> for symbol table:\n");
+    debugger_read();
+    if (query[0] == 'c') {
+      goto tag;
+    } else if (query[0] == '\n') {
+      ShowSymbolTable();
+    } else if (query[0] == 0 || query[0] == 'q' || query[0] == 'Q') {
+      break;
+    } else {
+      sscanf(query, "%s", query_val);
+      ml = atoi(LookupSymbol(query_val));
+      if (ensure_valid_addr(ml)) continue;
+      
+      debugger_read_mem_loc(ml);
+      
+      printf("Type  <Enter>  to continue debugging\nType        q  to quit\nType        f for forward range\nType        b for backward range:\n");
+      debugger_read();
+      if (query[0] == 0 || query[0] == 'q' || query[0] == 'Q') {
+        break;
+      } else if (query[0] == 'f' || query[0] == 'F') {
+        debugger_show_locations(ml, 0, 1, "forward");
+      } else if (query[0] == 'b' || query[0] == 'B') {
+        debugger_show_locations(ml, 1, 0, "reverse");
+      }
+    }
+  }
+  
+  printf("MIC-1 emulator finishing, goodbye\n\n");
+  exit(1);
 }			/* END Driver */
 
 /* passed an array of bytes of 16 ascii 1s and 0s */
