@@ -1,42 +1,31 @@
 #include <stdio.h>
-#include "globals.h" 
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <termios.h>
 
-#define  MemoryChipSize 1024
-typedef  DataBusType Memory_Chip[MemoryChipSize] ;
+#include "mic1.h"
+#include "clock.h"
+#include "datapath.h"
+#include "driver.h"
+#include "memory.h"
+#include "control.h"
+#include "cpu.h"
 
-
-void Set_blocking_io();
-void Set_nonblocking_io();
+/*
 extern void BurnInProm () ;
 extern void InitializeMemory () ;
 extern void InitializePCandStackPointer () ;
-extern void ActivateCpu () ;  
-extern void ActivateMemory () ;
-extern void DumpMemory () ;
-extern void GeneratePulse () ;
-extern int Cycle () ;
-
-void InitializeSymbolTable(char *);
-void ShowSymbolTable();
-const char *LookupSymbol(char *);
-
-struct Clock
-      {
-         int Cycle ;
-         int Subcycle ;         /* 0..4 */
-      } ;
-
 
 extern struct Clock Quartz;
 extern DataBusType    ProgramCounter ;
-extern int            MicroPc;
 
-extern Memory_Chip MemoryChip3 ;
+*/
+
+void InitializeSymbolTable(const char *);
+void ShowSymbolTable();
+const char *LookupSymbol(const char *);
 
 int btoi();
 
@@ -303,10 +292,7 @@ int i, result;
 /* will fill low order 8 bit memory location with  */
 /* 1s and 0s corresponding to the ascii character  */
 
-int  True_ascii_to_mem_ascii(mem_location, character)
-	char  *mem_location;
-	char  *character;
-{
+int  True_ascii_to_mem_ascii(char *mem_location, const char *character) {
 int  i;
 
 	for(i=0; i<16; i++){
@@ -343,7 +329,7 @@ typedef struct SymbolTableEntry {
 
 SymbolTableEntry_t *SymbolTable = NULL;
 
-const char *LookupSymbol(char *name) {
+const char *LookupSymbol(const char *name) {
   SymbolTableEntry_t *cur = SymbolTable;
   while (cur != NULL) {
     if (strcmp(name, cur->name) == 0) {
@@ -363,7 +349,7 @@ void ShowSymbolTable() {
   }
 }
 
-void InitializeSymbolTable(char *program_file) {
+void InitializeSymbolTable(const char *program_file) {
   FILE *inputfile;
   if ((inputfile = fopen (program_file, "r")) == NULL) {
       fprintf(stderr,"Can't open Program File, aborting \n");

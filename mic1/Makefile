@@ -1,20 +1,12 @@
-mic1 : driver.o alu.o control.o clock.o cpu.o datapath.o memory.o shifter.o 
-	gcc -o mic1 driver.o alu.o control.o clock.o cpu.o datapath.o memory.o shifter.o
-driver.o: driver.c globals.h
-	gcc -c -g driver.c 
-alu.o: alu.c globals.h
-	gcc -c -g alu.c
-control.o: control.c globals.h
-	gcc -c -g control.c
-clock.o: clock.c 
-	gcc -c -g clock.c
-cpu.o: cpu.c globals.h
-	gcc -c -g cpu.c
-datapath.o: datapath.c  globals.h
-	gcc -c -g datapath.c
-memory.o: memory.c globals.h
-	gcc -c -g  memory.c 
-shifter.o: shifter.c globals.h
-	gcc -c -g shifter.c
+CFLAGS = -g --std=c99
+OBJECTS = driver.o alu.o control.o clock.o cpu.o datapath.o memory.o shifter.o
+HEADERS = mic1.h $(OBJECTS:.o=.h)
+
+mic1 : $(OBJECTS)
+	cc -o $@ $^
+
+%.o: %.c $(HEADERS)
+	cc -c $(CFLAGS) $(@:.o=.c)
+
 clean:
 	rm -f mic1 *.o

@@ -1,5 +1,7 @@
 #include <strings.h>
-#include "globals.h"
+
+#include "mic1.h"
+#include "shifter.h"
 
 void ShiftLeft (DataBusType InputBits, DataBusType ShifterOutput) {
   for (int i = 0 ; i < DataWordSize-1 ; i++)

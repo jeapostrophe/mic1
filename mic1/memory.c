@@ -1,18 +1,14 @@
 #include <stdio.h>
 #include <strings.h>
-#include "globals.h"
+#include "mic1.h"
 
-#define  MemoryChipSize 1024
+#include "memory.h"
+#include "clock.h"
+#include "driver.h"
+
 #define  MOD %
 
 typedef  int ChipRange ;
-typedef  DataBusType Memory_Chip[MemoryChipSize] ;
-
-extern int Set_blocking_io();
-extern int Set_nonblocking_io();
-
-extern int  polled_io;
-extern char input_char;
 
 Memory_Chip MemoryChip0 ;
 Memory_Chip MemoryChip1 ;
@@ -24,7 +20,7 @@ ChipRange  Offset ;
 
 char       btoc();
 
-ActivateMemoryChip0 (Offset, Data, ReadBit, WriteBit)
+void ActivateMemoryChip0 (Offset, Data, ReadBit, WriteBit)
 ChipRange   Offset ;
 DataBusType Data ;
 Bit         ReadBit ;
@@ -40,9 +36,9 @@ Bit         WriteBit ;
     for (I = 0 ; I < DataWordSize-1 ; I++)
       MemoryChip0[Offset][I] = Data[I] ;
 
-}           /* END ActivateMemoryChip0 */
+}
 
-ActivateMemoryChip1 (Offset, Data, ReadBit, WriteBit)
+void ActivateMemoryChip1 (Offset, Data, ReadBit, WriteBit)
 
 ChipRange   Offset ;
 DataBusType Data ;
@@ -59,9 +55,9 @@ Bit         WriteBit ;
     for (I = 0 ; I < DataWordSize-1 ; I++)
       MemoryChip1[Offset][I] = Data[I] ;
 
-}           /* END ActivateMemoryChip1 */
+}
 
-ActivateMemoryChip2 (Offset, Data, ReadBit, WriteBit)
+void ActivateMemoryChip2 (Offset, Data, ReadBit, WriteBit)
 
 ChipRange   Offset ;
 DataBusType Data ;
@@ -78,7 +74,7 @@ Bit         WriteBit ;
     for (I = 0 ; I < DataWordSize-1 ; I++)
       MemoryChip2[Offset][I] = Data[I] ;
 
-}           /* END ActivateMemoryChip2 */
+}
 
 
 void ActivateMemoryChip3 (Offset, Data, ReadBit, WriteBit)
@@ -220,13 +216,7 @@ Bit Address0, Address1 ;
 
 }           /* END ComputeChipSelect */
 
-void ActivateMemory (Address, Data, ReadBit, WriteBit)
-     AddressBusType Address ;
-     DataBusType    Data ;
-     Bit            ReadBit ;
-     Bit            WriteBit ;
-
-{
+void ActivateMemory (AddressBusType Address, DataBusType Data, Bit ReadBit, Bit WriteBit) {
   int        ChipNumber ;
 
   Offset = ComputeOffset (Address) ;
@@ -289,9 +279,7 @@ void WriteChip(const char *src) {
   strcpy(dest, src);
 }
 
-void InitializeMemory (program_file)
-     char *program_file;
-{
+void InitializeMemory (const char *program_file) {
   FILE *inputfile, *fopen () ;  /* pointer to input file  library   */
   /* function to OPEN file for input  */
   char src[1024];

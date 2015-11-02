@@ -1,13 +1,11 @@
 #include <stdio.h>
 #include <strings.h>
-#include "globals.h"
 
-extern ActivateAlu () ;
-extern ActivateShifter () ;
-extern FirstSubcycle () ; 
-extern SecondSubcycle () ;
-extern ThirdSubcycle () ; 
-extern FourthSubcycle () ;
+#include "mic1.h"
+#include "clock.h"
+#include "alu.h"
+#include "shifter.h"
+#include "datapath.h"
 
 DataBusType    ProgramCounter="0000000000000000" ;
 DataBusType    Accumulator="0000000000000000" ;
@@ -39,26 +37,22 @@ void DumpRegister(const char* label, DataBusType reg) {
              label, reg, btoi(reg), (short)btoi(reg)) ;
 }
 
-DumpRegisters () 
+void DumpRegisters () {
+  printf ("\n");
+  DumpRegister("ProgramCounter", ProgramCounter);
+  DumpRegister("Accumulator   ", Accumulator);
+  DumpRegister("InstructionReg", InstructionReg);
+  DumpRegister("TempInstr     ", TempInstruction);
+  DumpRegister("StackPointer  ", StackPointer);
+  DumpRegister("ARegister     ", ARegister);
+  DumpRegister("BRegister     ", BRegister);
+  DumpRegister("CRegister     ", CRegister);
+  DumpRegister("DRegister     ", DRegister);
+  DumpRegister("ERegister     ", ERegister);
+  DumpRegister("FRegister     ", FRegister);
+}
 
-{
-
-     printf ("\n");
-     DumpRegister("ProgramCounter", ProgramCounter);
-     DumpRegister("Accumulator   ", Accumulator);
-     DumpRegister("InstructionReg", InstructionReg);
-     DumpRegister("TempInstr     ", TempInstruction);
-     DumpRegister("StackPointer  ", StackPointer);
-     DumpRegister("ARegister     ", ARegister);
-     DumpRegister("BRegister     ", BRegister);
-     DumpRegister("CRegister     ", CRegister);
-     DumpRegister("DRegister     ", DRegister);
-     DumpRegister("ERegister     ", ERegister);
-     DumpRegister("FRegister     ", FRegister);
-
-}			/* END DumpRegisters */
-
-LoadMar (DataLines) 
+void LoadMar (DataLines) 
 DataBusType DataLines  ;
 
 {
@@ -67,10 +61,10 @@ int I ;
         for (I = 0 ; I <= 11 ; I++)
 	   MAR[I] = DataLines[I+4] ;
 
-}			/* END LoadMar */
+}
 
 
-SelectRegister (Lines)
+int SelectRegister (Lines)
 DataBusType Lines ;
 
 {
@@ -85,9 +79,9 @@ DataBusType Lines ;
 
         return (Register) ;
 
-} 			/* END SelectRegister */
+}
    
-LoadALatch (ABits)
+void LoadALatch (ABits)
 DataBusType ABits ;
 
 {
@@ -130,9 +124,9 @@ int  Register ;
 			   break ;
 	}
 
-}			/* END LoadALatch */
+}
 
-LoadBLatch (BBits) 
+void LoadBLatch (BBits) 
 DataBusType BBits ;
 
 {
@@ -177,9 +171,9 @@ DataBusType BBits ;
 			   break ;
 	}
 
-}			/* END LoadBLatch */
+}
 
-LoadRegisterBank (CBits, DataLines)
+void LoadRegisterBank (CBits, DataLines)
 DataBusType  CBits ; 
 DataBusType  DataLines ;
 
@@ -216,73 +210,57 @@ int Register ;
 			  break ;
         }
 
-}			/* END LoadRegisterBank */
+}
 
-ActivateDataPath (MarRegs, MbrRegs, ABits, BBits, CBits,   
-                  AmuxBit, AluBits, ShiftBits, MbrBit, MarBit,
-                  NBit, ZBit)    
+void ActivateDataPath (AddressBusType MarRegs, DataBusType MbrRegs,
+                       DataBusType ABits, DataBusType BBits, DataBusType CBits,   
+                  Bit AmuxBit, TwoBits AluBits, TwoBits ShiftBits,
+                       Bit MbrBit, Bit MarBit, Bit *NBit, Bit *ZBit) {
 
-AddressBusType MarRegs ;
-DataBusType    MbrRegs ;
-DataBusType    ABits ;
-DataBusType    BBits ;
-DataBusType    CBits ;
-Bit            AmuxBit ;
-TwoBits        AluBits ;
-TwoBits        ShiftBits ;
-Bit            MbrBit ;
-Bit            MarBit ;
-Bit            *NBit ;
-Bit            *ZBit ;
+  DataBusType LeftOperand ;
+  DataBusType RightOperand ;
 
-{
+  strcpy (MAR, MarRegs) ;
+  strcpy (MBR, MbrRegs) ;
 
-    DataBusType LeftOperand ;
-    DataBusType RightOperand ;
-
-    strcpy (MAR, MarRegs) ;
-    strcpy (MBR, MbrRegs) ;
-
-    if (SecondSubcycle())
-       {
-          LoadALatch (ABits) ; 
-          LoadBLatch (BBits) ;
-       }
-
-    if (ThirdSubcycle())
+  if (SecondSubcycle())
     {
-        if (AmuxBit == One) 
-	     strcpy (LeftOperand, MBR) ;
-        else strcpy (LeftOperand, ALatch) ;
+      LoadALatch (ABits) ; 
+      LoadBLatch (BBits) ;
+    }
 
-        if (MarBit == One) 
-	{
-	     LoadMar (BLatch) ;  
-	     strcpy (MarRegs, MAR) ;
-	}
+  if (ThirdSubcycle())
+    {
+      if (AmuxBit == One) 
+        strcpy (LeftOperand, MBR) ;
+      else strcpy (LeftOperand, ALatch) ;
 
-        strcpy (RightOperand, BLatch) ;  
-        ActivateAlu (LeftOperand, RightOperand, AluBits, AluResult, 
-                     NBit, ZBit) ;
-        ActivateShifter (AluResult, ShiftBits, ShifterResult) ;
+      if (MarBit == One) 
+        {
+          LoadMar (BLatch) ;  
+          strcpy (MarRegs, MAR) ;
+        }
+
+      strcpy (RightOperand, BLatch) ;  
+      ActivateAlu (LeftOperand, RightOperand, AluBits, AluResult, 
+                   NBit, ZBit) ;
+      ActivateShifter (AluResult, ShiftBits, ShifterResult) ;
 
     }
 
-    if (FourthSubcycle()) 
+  if (FourthSubcycle()) 
     {
-       LoadRegisterBank( CBits, ShifterResult) ; 
-       if (MbrBit == One) 
-       {
-	  strcpy (MBR, ShifterResult) ;
+      LoadRegisterBank( CBits, ShifterResult) ; 
+      if (MbrBit == One) 
+        {
+          strcpy (MBR, ShifterResult) ;
           strcpy (MbrRegs, ShifterResult) ;
-       }
+        }
     }
 
-}			/* END ActivateDataPath */
+}
 
-void InitializePCandStackPointer (pc, sp)
-int pc, sp;
-{
+void InitializePCandStackPointer (int pc, int sp) {
    char pc_str[17], sp_str[17];
    int i, mask = 0x00008000;
 

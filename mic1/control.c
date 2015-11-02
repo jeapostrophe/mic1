@@ -1,11 +1,8 @@
 #include <stdio.h>
 #include <strings.h>
-#include "globals.h"
 
-extern  FirstSubcycle () ;
-extern  SecondSubcycle () ;
-extern  ThirdSubcycle () ; 
-extern  FourthSubcycle () ;
+#include "mic1.h"
+#include "clock.h"
 
 #define MicroWordSize 33
 #define MaxSize       256
@@ -22,9 +19,7 @@ int       MicroPc = 0 ;
 MicroWord MIR ;
 int       RowCounter = 0;
 
-void BurnInProm (prom_file)
-char *prom_file;
-{
+void BurnInProm (const char *prom_file) {
 
 int  Row ;
 int  Col ;
@@ -66,169 +61,153 @@ FILE *inputfile, *fopen () ;	/* pointer to input file library    */
 }			/* END BurnInProm */
 
 
-OutputProm () 
-{
+void OutputProm ()  {
+  for (int Row = 0 ; Row < RowCounter ; Row++) {
+    for (int Col = 0 ; Col < MicroWordSize-1 ; Col++) {
+      printf ("%c", MicroMemory[Row][Col]) ;
+    }
+    printf ("\n") ;
+  }
+}
 
-    int Row ;
-    int Col ;
+int BusRegister (FourBits RField) {
+  int Sum ;
 
-        for (Row = 0 ; Row < RowCounter ; Row++) 
-	   {
-              for (Col = 0 ; Col < MicroWordSize-1 ; Col++) 
-                  printf ("%c", MicroMemory[Row][Col]) ;
-	      printf ("\n") ;
-           }
-}			/* END OutputProm */
+  Sum = 0 ;
+  if (RField[3] == One) 
+    Sum = Sum + 1 ;
+  if (RField[2] == One)
+    Sum = Sum + 2 ;
+  if (RField[1] == One)
+    Sum = Sum + 4 ;
+  if (RField[0] == One)
+    Sum = Sum + 8 ;
 
+  return (Sum) ;   
+}
 
-BusRegister (RField)
-FourBits RField ;
-{
-   int Sum ;
+void DecodeRegField (FourBits RField, DataBusType Field) {
+  int Temp ;
 
-   Sum = 0 ;
-   if (RField[3] == One) 
-       Sum = Sum + 1 ;
-   if (RField[2] == One)
-       Sum = Sum + 2 ;
-   if (RField[1] == One)
-       Sum = Sum + 4 ;
-   if (RField[0] == One)
-       Sum = Sum + 8 ;
+  Temp = BusRegister (RField);
 
-   return (Sum) ;
-    
-}		/* END BusRegister */
-
-DecodeRegField (RField, Field)
-FourBits    RField ;
-DataBusType Field ;
-
-{
-int Temp ;
-
-    Temp = BusRegister (RField);
-
-    switch (Temp)
+  switch (Temp)
     {
-         case 0   :  strcpy (Field, "1000000000000000") ;
-		     break ;
-         case 1   :  strcpy (Field, "0100000000000000") ;
-		     break ;
-         case 2   :  strcpy (Field, "0010000000000000") ;
-		     break ;
-         case 3   :  strcpy (Field, "0001000000000000") ;
-		     break ;
-         case 4   :  strcpy (Field, "0000100000000000") ;
-		     break ;
-         case 5   :  strcpy (Field, "0000010000000000") ;
-		     break ;
-         case 6   :  strcpy (Field, "0000001000000000") ;
-		     break ;
-         case 7   :  strcpy (Field, "0000000100000000") ;
-		     break ;
-         case 8   :  strcpy (Field, "0000000010000000") ;
-		     break ;
-         case 9   :  strcpy (Field, "0000000001000000") ;
-		     break ;
-         case 10  :  strcpy (Field, "0000000000100000") ;
-		     break ;
-         case 11  :  strcpy (Field, "0000000000010000") ;
-		     break ;
-         case 12  :  strcpy (Field, "0000000000001000") ;
-		     break ;
-         case 13  :  strcpy (Field, "0000000000000100") ;
-		     break ;
-         case 14  :  strcpy (Field, "0000000000000010") ;
-		     break ;
-         case 15  :  strcpy (Field, "0000000000000001") ;      
-		     break ;
+    case 0   :  strcpy (Field, "1000000000000000") ;
+      break ;
+    case 1   :  strcpy (Field, "0100000000000000") ;
+      break ;
+    case 2   :  strcpy (Field, "0010000000000000") ;
+      break ;
+    case 3   :  strcpy (Field, "0001000000000000") ;
+      break ;
+    case 4   :  strcpy (Field, "0000100000000000") ;
+      break ;
+    case 5   :  strcpy (Field, "0000010000000000") ;
+      break ;
+    case 6   :  strcpy (Field, "0000001000000000") ;
+      break ;
+    case 7   :  strcpy (Field, "0000000100000000") ;
+      break ;
+    case 8   :  strcpy (Field, "0000000010000000") ;
+      break ;
+    case 9   :  strcpy (Field, "0000000001000000") ;
+      break ;
+    case 10  :  strcpy (Field, "0000000000100000") ;
+      break ;
+    case 11  :  strcpy (Field, "0000000000010000") ;
+      break ;
+    case 12  :  strcpy (Field, "0000000000001000") ;
+      break ;
+    case 13  :  strcpy (Field, "0000000000000100") ;
+      break ;
+    case 14  :  strcpy (Field, "0000000000000010") ;
+      break ;
+    case 15  :  strcpy (Field, "0000000000000001") ;      
+      break ;
     }		     /* end case structure */
 
-}			/* END DecodeRegField */
+}
 
-DecodeAField (ABits) 
-DataBusType  ABits ;
-{
-FourBits AField ;
+void DecodeAField (DataBusType ABits) {
+  FourBits AField ;
 
-        AField[0]  =  MIR[20];
-        AField[1]  =  MIR[21];
-        AField[2]  =  MIR[22];
-        AField[3]  =  MIR[23];
-        DecodeRegField (AField, ABits) ;
+  AField[0]  =  MIR[20];
+  AField[1]  =  MIR[21];
+  AField[2]  =  MIR[22];
+  AField[3]  =  MIR[23];
+  DecodeRegField (AField, ABits) ;
+}
 
-}			/* END DecodeAField */
+void DecodeBField (DataBusType BBits) {
+  FourBits BField ;
 
-DecodeBField (BBits)
-DataBusType BBits ;
-{
-FourBits BField ;
+  BField[0]  =  MIR[16];
+  BField[1]  =  MIR[17];
+  BField[2]  =  MIR[18];
+  BField[3]  =  MIR[19];
+  DecodeRegField (BField, BBits) ;
+}
 
-        BField[0]  =  MIR[16];
-        BField[1]  =  MIR[17];
-        BField[2]  =  MIR[18];
-        BField[3]  =  MIR[19];
-        DecodeRegField (BField, BBits) ;
+void DecodeCField (DataBusType CBits) {
+  FourBits CField ;
 
-}			/* END DecodeBField */
+  if (MIR[11] == One) {
+      CField[0]  =  MIR[12];
+      CField[1]  =  MIR[13];
+      CField[2]  =  MIR[14];
+      CField[3]  =  MIR[15];
+      DecodeRegField (CField, CBits) ;
+  } else {
+    strcpy (CBits, "0000000000000000") ;
+  }
+}
 
-DecodeCField (CBits)
-DataBusType CBits ;
-{
-FourBits CField ;
+void LoadMirFromControlStore () { 
+  int I ;
 
-        if (MIR[11] == One)
-        {
-            CField[0]  =  MIR[12];
-            CField[1]  =  MIR[13];
-            CField[2]  =  MIR[14];
-            CField[3]  =  MIR[15];
-            DecodeRegField (CField, CBits) ;
-        }
-        else strcpy (CBits, "0000000000000000") ;
+  for (I = 0 ; I < MicroWordSize-1 ; I++)
+    MIR[I] = MicroMemory[MicroPc][I] ;
 
-}			/* END DecodeCField */
+}
 
-LoadMirFromControlStore ()
-    
-{ 
-int I ;
-
-	for (I = 0 ; I < MicroWordSize-1 ; I++)
-	   MIR[I] = MicroMemory[MicroPc][I] ;
-
-}			/* END LoadMirFromControlStore */
-
-DetermineMmux (NBit, ZBit, Cond, Mmux) 
+void DetermineMmux (NBit, ZBit, Cond, Mmux) 
 Bit     NBit, ZBit ;
 TwoBits Cond ;
 Bit     *Mmux ;
 
 {
-Bit CondBit0 ;
-Bit CondBit1 ;
+  Bit CondBit0 ;
+  Bit CondBit1 ;
 
-        CondBit0 = Cond[0] ;    
-	CondBit1 = Cond[1] ;
+  CondBit0 = Cond[0] ;    
+  CondBit1 = Cond[1] ;
 
-        if ((CondBit0 == Zero) && (CondBit1 == Zero))
-	    *Mmux = Zero ;
-        if ((CondBit0 == One) && (CondBit1 == One))
-	    *Mmux = One  ;
-        if ((CondBit0 == One) && (CondBit1 == Zero)) 
-            if (ZBit == One) 
-	         *Mmux = One ;
-   	    else *Mmux = Zero ;
+  if ((CondBit0 == Zero) && (CondBit1 == Zero)) {
+    *Mmux = Zero ;
+  }
+  if ((CondBit0 == One) && (CondBit1 == One)) {
+    *Mmux = One  ;
+  }
+  if ((CondBit0 == One) && (CondBit1 == Zero)) { 
+    if (ZBit == One) {
+      *Mmux = One ;
+    } else {
+      *Mmux = Zero ;
+    }
+  }
+        
+  if ((CondBit0 == Zero) && (CondBit1 == One)) {
+    if (NBit == One) {
+      *Mmux = One ;
+    } else {
+      *Mmux = Zero ;
+    }
+  }
 
-        if ((CondBit0 == Zero) && (CondBit1 == One))
-           if (NBit == One) 
-	        *Mmux = One ;
-	   else *Mmux = Zero ;
+}
 
-}			/* END DetermineMmux */
-
-ConvertToCardinal (Addr)
+int ConvertToCardinal (Addr)
 EightBits Addr ;
 
 {
@@ -250,7 +229,7 @@ EightBits Addr ;
 
 }			/* END ConvertToCardinal */
 
-LoadMicroProgramCounter (NBit, ZBit, Cond, Addr) 
+void LoadMicroProgramCounter (NBit, ZBit, Cond, Addr) 
 Bit       NBit, ZBit ;
 TwoBits   Cond ;
 EightBits Addr ;
@@ -266,22 +245,12 @@ EightBits Addr ;
    else
 	 MicroPc = ConvertToCardinal (Addr) ;
 
-}			/* END LoadMicroProgramCounter */
+}
 
-ActivateControlStore (NBit, ZBit, ABits, BBits, CBits,
-                      AmuxBit, AluBits, ShiftBits, 
-                      MbrBit, MarBit, ReadBit, WriteBit)
-
-Bit         NBit, ZBit ;
-DataBusType ABits, BBits, CBits ;
-Bit         *AmuxBit ;
-TwoBits     AluBits, ShiftBits ;
-Bit         *MbrBit ;
-Bit         *MarBit ;
-Bit         *ReadBit ;
-Bit         *WriteBit ;
-
-{
+void ActivateControlStore (Bit NBit, Bit ZBit,
+                           DataBusType ABits, DataBusType BBits, DataBusType CBits,
+                           Bit *AmuxBit, TwoBits AluBits, TwoBits ShiftBits, 
+                           Bit *MbrBit, Bit *MarBit, Bit *ReadBit, Bit *WriteBit) {
 TwoBits   Cond ;
 EightBits Addr ;
 /*FourBits  AField ;

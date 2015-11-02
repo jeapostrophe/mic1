@@ -1,102 +1,62 @@
 #include <strings.h>
-#include "globals.h"
 
-Add (Left, Right, AluOutput) 
-DataBusType Left, Right ;
-DataBusType AluOutput ;
+#include "mic1.h"
+#include "alu.h"
 
-{
+void Add (DataBusType Left, DataBusType Right, DataBusType AluOutput) {
+  Bit Carry = Zero ;
 
-   Bit Carry ;
-   int I ;
+  for (int I = DataWordSize-1 ; I >= 0 ; I--) {
+    if ((Carry == Zero) && (Left[I] == Zero) && (Right[I] == Zero)) {
+      AluOutput[I] = Zero ;  
+      Carry = Zero ;
+    } else if ((Carry == Zero) && (Left[I] == Zero) && (Right[I] == One)) {
+      AluOutput[I] = One ;  
+      Carry = Zero ;
+    } else if ((Carry == Zero) && (Left[I] == One) && (Right[I] == Zero)) {
+      AluOutput[I] = One ;  
+      Carry = Zero ;
+    } else if ((Carry == Zero) && (Left[I] == One) && (Right[I] == One)) {
+      AluOutput[I] = Zero ;  
+      Carry = One ;
+    } else if ((Carry == One) && (Left[I] == Zero) && (Right[I] == Zero)) {
+      AluOutput[I] = One ;  
+      Carry = Zero ;
+    } else if ((Carry == One) && (Left[I] == Zero) && (Right[I] == One)) {
+      AluOutput[I] = Zero ;  
+      Carry = One ;
+    } else if ((Carry == One) && (Left[I] == One) && (Right[I] == Zero)) {
+      AluOutput[I] = Zero ;  
+      Carry = One ;
+    } else if ((Carry == One) && (Left[I] == One) && (Right[I] == One)) {
+      AluOutput[I] = One ;  
+      Carry = One ; 
+    }
+  }
+}
 
-        Carry = Zero ;
+void And (DataBusType LeftOperand, DataBusType RightOperand, DataBusType AluOutput) {
+  for (int I = 0 ; I < DataWordSize-1 ; I++) {
+    if ((LeftOperand[I] == One) && (RightOperand[I] == One)) {
+      AluOutput[I] = One ; 
+    } else {
+      AluOutput[I] = Zero ;
+    }
+  }
+}
 
-        for (I = DataWordSize-1 ; I >= 0 ; I--)
+void NotA (DataBusType LeftOperand, DataBusType AluOutput) {
+  for (int I = 0 ; I < DataWordSize-1 ; I++) {
+    if (LeftOperand[I] == One) {
+      AluOutput[I] = Zero ; 
+    } else {
+      AluOutput[I] = One ;
+    }
+  }
+}
 
-        if ((Carry == Zero) && (Left[I] == Zero) && (Right[I] == Zero))
-           {
-	      AluOutput[I] = Zero ;  
-	      Carry = Zero ;
-           }
-          else if ((Carry == Zero) && (Left[I] == Zero) && (Right[I] == One))
-           {
-              AluOutput[I] = One ;  
-	      Carry = Zero ;
-           }
-          else if ((Carry == Zero) && (Left[I] == One) && (Right[I] == Zero))
-	   {
-              AluOutput[I] = One ;  
-	      Carry = Zero ;
-	   }
-          else if ((Carry == Zero) && (Left[I] == One) && (Right[I] == One))
-	   {
-              AluOutput[I] = Zero ;  
-	      Carry = One ;
-	   }
-          else if ((Carry == One) && (Left[I] == Zero) && (Right[I] == Zero))
-	   {
-              AluOutput[I] = One ;  
-	      Carry = Zero ;
-	   }
-          else if ((Carry == One) && (Left[I] == Zero) && (Right[I] == One))
-	   {
-              AluOutput[I] = Zero ;  
-	      Carry = One ;
-	   }
-          else if ((Carry == One) && (Left[I] == One) && (Right[I] == Zero))
-	   {
-              AluOutput[I] = Zero ;  
-	      Carry = One ;
-	   }
-          else if ((Carry == One) && (Left[I] == One) && (Right[I] == One))
-	   {
-              AluOutput[I] = One ;  
-	      Carry = One ; 
-	   }
-
-}				/* END Add */
-
-And (LeftOperand, RightOperand, AluOutput)
-DataBusType LeftOperand, RightOperand ; 
-DataBusType AluOutput ;
-
-{
-        int I ;
-
-        for (I = 0 ; I < DataWordSize-1 ; I++)
-
-            if ((LeftOperand[I] == One) && (RightOperand[I] == One))
-                 AluOutput[I] = One ; 
-            else AluOutput[I] = Zero ; 
-
-}				/* END And */
-
-NotA (LeftOperand, AluOutput)
-DataBusType  LeftOperand ;
-DataBusType  AluOutput ;
-
-{
-       int I ;
-
-       for (I = 0 ; I < DataWordSize-1 ; I++)
-
-              if (LeftOperand[I] == One)  
-	           AluOutput[I] = Zero ; 
-              else AluOutput[I] = One ;
-
-}				/* END NotA */
-
-ActivateAlu (LeftOperand, RightOperand, AluBits,
-             AluOutput, NBit, ZBit) 
-
-DataBusType LeftOperand, RightOperand ;
-TwoBits     AluBits ;
-DataBusType AluOutput ; 
-Bit         *NBit ;
-Bit         *ZBit ;
-
-{
+void ActivateAlu (DataBusType LeftOperand, DataBusType RightOperand, TwoBits AluBits,
+                  DataBusType AluOutput, Bit *NBit, Bit *ZBit) {
        int I ;
        Bit AluBit0 ;
        Bit AluBit1 ;
@@ -126,4 +86,4 @@ Bit         *ZBit ;
            if (AluOutput[I] == '1')
 	      *ZBit = '0' ;
 
-}				/* END ActivateAlu */
+}
