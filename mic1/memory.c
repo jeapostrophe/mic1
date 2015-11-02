@@ -17,8 +17,6 @@ extern char input_characters[100][80];
 
 extern int  input_x, input_y, input_buf;
 
-
-
 Memory_Chip MemoryChip0 ;
 Memory_Chip MemoryChip1 ;
 Memory_Chip MemoryChip2 ;
@@ -94,122 +92,102 @@ Bit         ReadBit ;
 Bit         WriteBit ;   
 
 {
-static subcycles = 0, sub1020 = 0, sub1021 = 0;
-int I ;				/* loop counter index */
-char  print_char;
-char  test_char;
+  static subcycles = 0, sub1020 = 0, sub1021 = 0;
+  int I ;				/* loop counter index */
+  char  print_char;
+  char  test_char;
 
-	  subcycles++;
-          if (ReadBit  == One){ 
-	    switch(Offset){
-	    default:	for (I = 0 ; I < DataWordSize-1 ; I++)
-                            Data[I] = MemoryChip3[Offset][I] ;
-			break;
+  subcycles++;
+  if (ReadBit  == One) { 
+    switch(Offset){
+    default:	for (I = 0 ; I < DataWordSize-1 ; I++)
+        Data[I] = MemoryChip3[Offset][I] ;
+      break;
 
-	    case 1022:	for (I = 0 ; I < DataWordSize-1 ; I++)
-                            Data[I] = MemoryChip3[Offset][I] ;
-			break;
+    case 1022:	for (I = 0 ; I < DataWordSize-1 ; I++)
+        Data[I] = MemoryChip3[Offset][I] ;
+      break;
 
-	    case 1021:  for (I = 0 ; I < DataWordSize-1 ; I++)
-                            Data[I] = MemoryChip3[Offset][I] ;
-/***
-printf("\n %d\n",subcycles);
-***
-			if(Data[14] == '1' /** && (sub1020++ % 8 == 0) 
-			   && Data[12] == '1')polled_io = 1;**/ 
-			break;
+    case 1021:  for (I = 0 ; I < DataWordSize-1 ; I++)
+        Data[I] = MemoryChip3[Offset][I] ;
+      break;
 
-	    case 1020:  if((sub1021++ % 8 == 0) && MemoryChip3[1021][14] == '1'
-						&& MemoryChip3[1021][12] == '1'){
-			  True_ascii_to_mem_ascii(&MemoryChip3[1020][0],
-                                          &input_characters[input_x][input_y]);
-/***
-printf("\n ascii: %d ", input_characters[input_x][input_y]);
-***/
-			  if(input_characters[input_x][++input_y] == '\0'){
-			     input_y = 0;
-			     input_characters[input_x][input_y] = '\0';
-                             input_x = (input_x + 1) % 100;
-			     if(input_characters[input_x][input_y]  == '\0'){
-				MemoryChip3[1021][15] = '1';
-                             	MemoryChip3[1021][14] = '0';
-				polled_io = 1;
-			     } else {
-			     	MemoryChip3[1021][15] = '0';
-			     	MemoryChip3[1021][14] = '1';
-				polled_io = 0;
-			     }
-/****
-			     polled_io = 0;
-			     if(input_buf == (input_x = (input_x + 1) % 100)){
-			        MemoryChip3[1021][15] = '0';
-			     }
-****/
-                          }
- 			}
-/***
-printf("\n %d\n",subcycles);
-***/
-			for (I = 0 ; I < DataWordSize-1 ; I++)
-                            Data[I] = MemoryChip3[Offset][I] ;
-			break;
-	    }
+    case 1020:
+      if((sub1021++ % 8 == 0) && MemoryChip3[1021][14] == '1'
+         && MemoryChip3[1021][12] == '1') {
+        True_ascii_to_mem_ascii(&MemoryChip3[1020][0],
+                                &input_characters[input_x][input_y]);
+        if(input_characters[input_x][++input_y] == '\0'){
+          input_y = 0;
+          input_characters[input_x][input_y] = '\0';
+          input_x = (input_x + 1) % 100;
+          if(input_characters[input_x][input_y]  == '\0'){
+            MemoryChip3[1021][15] = '1';
+            MemoryChip3[1021][14] = '0';
+            polled_io = 1;
+          } else {
+            MemoryChip3[1021][15] = '0';
+            MemoryChip3[1021][14] = '1';
+            polled_io = 0;
+          }
+        }
+      }
+      for (I = 0 ; I < DataWordSize-1 ; I++)
+        Data[I] = MemoryChip3[Offset][I] ;
+      break;
+    }
  
-          }else if (WriteBit == One) {
+  } else if (WriteBit == One) {
 
-            switch(Offset){
-	    default:    for (I = 0 ; I < DataWordSize-1 ; I++)
-                            MemoryChip3[Offset][I] = Data[I] ;
-                        break;
+    switch(Offset){
+    default:    for (I = 0 ; I < DataWordSize-1 ; I++)
+        MemoryChip3[Offset][I] = Data[I] ;
+      break;
 
-            case 1022:  if(subcycles % 4 == 0 &&  MemoryChip3[1023][12]  =='1'
-					      &&  MemoryChip3[1023][14]  =='1'){
-			   for (I = 0 ; I < DataWordSize-1 ; I++)
-                            MemoryChip3[Offset][I] = Data[I] ;
-			   test_char = btoc(Data);
-			   write(1, &test_char, 1);
-                           // printf("%c", btoc(Data));
-			   fflush(stdout);
-			   MemoryChip3[1023][14] = '1';
-			   MemoryChip3[1023][15] = '0';
-                        }
-                        break;
+    case 1022:
+      if (subcycles % 4 == 0 &&  MemoryChip3[1023][12]  =='1'
+          &&  MemoryChip3[1023][14]  =='1') {
+        for (I = 0 ; I < DataWordSize-1 ; I++)
+          MemoryChip3[Offset][I] = Data[I] ;
+        fprintf(stdout, "%c", btoc(Data));
+        fflush(stdout);
+        MemoryChip3[1023][14] = '1';
+        MemoryChip3[1023][15] = '0';
+      }
+      break;
 
-	    case 1021:   if(Data[12]  =='1'){
-			         for (I = 0 ; I < DataWordSize-1 ; I++)
-                            		MemoryChip3[Offset][I] = '0';
-				 polled_io = 1;
-				 MemoryChip3[Offset][14] = '0';
-				 MemoryChip3[Offset][15] = '1';
-				 MemoryChip3[Offset][12] = '1';
-			 } else {
-				for (I = 0 ; I < DataWordSize-1 ; I++)
-                                        MemoryChip3[Offset][I] = '0';
-				polled_io = 0;
-			 }
-			 break;
+    case 1021:
+      if (Data[12]  =='1') {
+        for (I = 0 ; I < DataWordSize-1 ; I++)
+          MemoryChip3[Offset][I] = '0';
+        polled_io = 1;
+        MemoryChip3[Offset][14] = '0';
+        MemoryChip3[Offset][15] = '1';
+        MemoryChip3[Offset][12] = '1';
+      } else {
+        for (I = 0 ; I < DataWordSize-1 ; I++)
+          MemoryChip3[Offset][I] = '0';
+        polled_io = 0;
+      }
+      break;
 
-	    case 1023:   if(Data[12]  =='1'){
-                                 for (I = 0 ; I < DataWordSize-1 ; I++)
-                                        MemoryChip3[Offset][I] = '0';
-                                 MemoryChip3[Offset][14] = '1';
-                                 MemoryChip3[Offset][15] = '0';
-                                 MemoryChip3[Offset][12] = '1';
-                         } else {
-                                for (I = 0 ; I < DataWordSize-1 ; I++)
-                                        MemoryChip3[Offset][I] = '0';
-                                polled_io = 0;
-                         }
-                         break;
-				 
+    case 1023:
+      if (Data[12]  =='1') {
+        for (I = 0 ; I < DataWordSize-1 ; I++)
+          MemoryChip3[Offset][I] = '0';
+        MemoryChip3[Offset][14] = '1';
+        MemoryChip3[Offset][15] = '0';
+        MemoryChip3[Offset][12] = '1';
+      } else {
+        for (I = 0 ; I < DataWordSize-1 ; I++)
+          MemoryChip3[Offset][I] = '0';
+        polled_io = 0;
+      }
+      break;
 
-            case 1020: break;
-	    }
-	}
-
-
-
-
+    case 1020: break;
+    }
+  }
 }			/* END ActivateMemoryChip3 */
 
 

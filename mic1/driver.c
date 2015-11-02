@@ -48,7 +48,7 @@ int  polled_io = 0;   /* flag for non-blocking input  */
 char input_characters[100][80];
 char *inbuf;
 
-int  input_x=0, input_y=0, input_buf=0;
+int  input_x = 0, input_y = 0, input_buf = 0;
 
 int  original_stdin_channel_flags;
 int  nonblock_stdin_channel_flags;
@@ -111,8 +111,9 @@ int    pc, sp;
        }
 
 
-     for(i=0; i<100; i++){
-	for(j=0; j<80; j++)input_characters[i][j] = '\0';
+     for (i=0; i<100; i++){
+       for (j=0; j<80; j++)
+         input_characters[i][j] = '\0';
      }
 
      BurnInProm (promfile);
