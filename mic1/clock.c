@@ -52,6 +52,13 @@ int Cycle ()
 
 }
 
+int Subcycle ()
+{
+
+   return (Quartz.Subcycle) ;
+
+}
+
 void GeneratePulse ()
 {
 

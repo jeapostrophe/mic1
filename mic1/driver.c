@@ -44,11 +44,7 @@ int btoi();
 int  power2[16] = {1,2,4,8,16,32,64,128,256,512,1024,2048,4096,8192,16384,32768};
 
 int  polled_io = 0;   /* flag for non-blocking input  */
-
-char input_characters[100][80];
-char *inbuf;
-
-int  input_x = 0, input_y = 0, input_buf = 0;
+char input_char = 0;
 
 int  original_stdin_channel_flags;
 int  nonblock_stdin_channel_flags;
@@ -110,12 +106,6 @@ int    pc, sp;
                  exit(2);
        }
 
-
-     for (i=0; i<100; i++){
-       for (j=0; j<80; j++)
-         input_characters[i][j] = '\0';
-     }
-
      BurnInProm (promfile);
      InitializeMemory (programfile) ;
      InitializeSymbolTable (programfile) ;
@@ -125,33 +115,30 @@ int    pc, sp;
      ReadBit  = Zero ;
      WriteBit = Zero ;
 
-tag: for ( ; ; ) 
-     { 
-	if(polled_io){
-		Set_nonblocking_io();
-		if((inbuf = fgets(&input_characters[input_buf][0], 99, stdin))){
-		  input_characters[input_buf][col=strlen(inbuf)] = '\n';
-		  input_characters[input_buf][col+1] = '\0';
-		  input_buf = (input_buf + 1) % 100;
-		  polled_io = 0;
-		  MemoryChip3[1021][14] = '1';
-		  MemoryChip3[1021][15] = '0';
-		  Set_blocking_io();
-		}
-	}
+ tag: for ( ; ; ) {
+       GeneratePulse () ;
 
-        GeneratePulse () ;
+       if (polled_io == 2 && FirstSubcycle() ) {
+         Set_nonblocking_io();
+         input_char = fgetc(stdin);
+         if (input_char == EOF) input_char = 0;
+         polled_io = 0;
+         //printf("%d.%d read (%d) poll(%d)\n", Cycle(), Subcycle(), input_char, polled_io);
+         MemoryChip3[1021][14] = '1';
+         MemoryChip3[1021][15] = '0';
+         Set_blocking_io();
+       } else {
+         //printf("%d.%d no read\n", Cycle(), Subcycle());
+       }
+       
+       ActivateCpu (Address, Data, &ReadBit, &WriteBit) ;  
 
-        ActivateCpu (Address, Data, &ReadBit, &WriteBit) ;  
+       ActivateMemory (Address, Data, ReadBit, WriteBit) ;  
 
-        ActivateMemory (Address, Data, ReadBit, WriteBit) ;  
-
-        if ((ReadBit == One) && (WriteBit == One) && ClockCycle != Cycle() ){
-	   sleep(1);
-	   Set_blocking_io();
-	   tcflush(0, TCIFLUSH);
-	   break ;
-	}
+       if ((ReadBit == One) && (WriteBit == One) && ClockCycle != Cycle() ) {
+         Set_blocking_io();
+         break ;
+       }
      }
 
      
@@ -159,7 +146,6 @@ tag: for ( ; ; )
     ClockCycle = Cycle () ;
     printf ("\nMicroPC        : %d\n", MicroPc);
     printf ("Total cycles   : %d\n\n", ClockCycle);
-    tcflush(0, TCIFLUSH);  /* dump anything in the input queue */
 /***********
     printf("If you would like to examine memory enter  y  if not enter  n: ");
     gets(query);
@@ -169,21 +155,7 @@ tag: for ( ; ; )
 	   printf("Type address to view memory, [q]uit, [c]ontinue, <Enter> for symbol table:\n");
 	   fgets(query, 79, stdin);
 	   if(query[0] == 'c'){
-/*
-	      mem_location = (btoi(ProgramCounter) + 1);
-	      for(i=15; i>=0; i--){
-                if(mem_location >=  power2[i]){
-                      ProgramCounter[15-i] = '1';
-                      mem_location -= power2[i];
-                }else{
-                      ProgramCounter[15-i] = '0';
-                }
-              }
-	      ProgramCounter[16] = '\0';
-*/
 	      printf("\nThe new PC is  : %s\n\n", ProgramCounter);
-//	      MicroPc = 0 ;
-//	      Quartz.Subcycle = 0;
               goto tag;
 	   } else if(query[0] == '\n') {
          ShowSymbolTable();

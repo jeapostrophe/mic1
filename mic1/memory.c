@@ -12,10 +12,7 @@ extern int Set_blocking_io();
 extern int Set_nonblocking_io();
 
 extern int  polled_io;
-
-extern char input_characters[100][80];
-
-extern int  input_x, input_y, input_buf;
+extern char input_char;
 
 Memory_Chip MemoryChip0 ;
 Memory_Chip MemoryChip1 ;
@@ -92,51 +89,36 @@ Bit         ReadBit ;
 Bit         WriteBit ;   
 
 {
-  static subcycles = 0, sub1020 = 0, sub1021 = 0;
+  static int receiver_buffer_read = 0;
   int I ;				/* loop counter index */
-  char  print_char;
-  char  test_char;
 
-  subcycles++;
-  if (ReadBit  == One) { 
+  if (ReadBit == One) { 
     switch(Offset){
     default:	for (I = 0 ; I < DataWordSize-1 ; I++)
         Data[I] = MemoryChip3[Offset][I] ;
       break;
-
-    case 1022:	for (I = 0 ; I < DataWordSize-1 ; I++)
-        Data[I] = MemoryChip3[Offset][I] ;
-      break;
-
-    case 1021:  for (I = 0 ; I < DataWordSize-1 ; I++)
-        Data[I] = MemoryChip3[Offset][I] ;
-      break;
-
+      
+      // Reciever buffer
     case 1020:
-      if((sub1021++ % 8 == 0) && MemoryChip3[1021][14] == '1'
+      if ( FourthSubcycle() ) {
+        receiver_buffer_read++;
+      }
+      if ( receiver_buffer_read == 2 && MemoryChip3[1021][14] == '1'
          && MemoryChip3[1021][12] == '1') {
-        True_ascii_to_mem_ascii(&MemoryChip3[1020][0],
-                                &input_characters[input_x][input_y]);
-        if(input_characters[input_x][++input_y] == '\0'){
-          input_y = 0;
-          input_characters[input_x][input_y] = '\0';
-          input_x = (input_x + 1) % 100;
-          if(input_characters[input_x][input_y]  == '\0'){
-            MemoryChip3[1021][15] = '1';
-            MemoryChip3[1021][14] = '0';
-            polled_io = 1;
-          } else {
-            MemoryChip3[1021][15] = '0';
-            MemoryChip3[1021][14] = '1';
-            polled_io = 0;
-          }
-        }
+        True_ascii_to_mem_ascii(&MemoryChip3[1020][0], &input_char);
+        MemoryChip3[1021][15] = '1';
+        MemoryChip3[1021][14] = '0';
+        polled_io = 2;
+        receiver_buffer_read = 0;
+        //printf("%d.%d read receiver buffer read (%d) (%c) poll(%d)\n", Cycle(), Subcycle(), input_char, input_char, polled_io);
       }
       for (I = 0 ; I < DataWordSize-1 ; I++)
         Data[I] = MemoryChip3[Offset][I] ;
       break;
+
     }
- 
+
+    
   } else if (WriteBit == One) {
 
     switch(Offset){
@@ -144,8 +126,32 @@ Bit         WriteBit ;
         MemoryChip3[Offset][I] = Data[I] ;
       break;
 
+      // Reciever buffer
+    case 1020: break;
+
+      // Receiver status
+    case 1021:
+      if (FourthSubcycle()) {
+        if (Data[12] == '1') {
+          for (I = 0 ; I < DataWordSize-1 ; I++)
+            MemoryChip3[Offset][I] = '0';
+          polled_io = polled_io ? 2 : 1;
+          //printf("%d.%d write receiver status ON, poll(%d)\n", Cycle(), Subcycle(), polled_io);
+          MemoryChip3[Offset][14] = '0';
+          MemoryChip3[Offset][15] = '1';
+          MemoryChip3[Offset][12] = '1';
+        } else {
+          for (I = 0 ; I < DataWordSize-1 ; I++)
+            MemoryChip3[Offset][I] = '0';
+          polled_io = 0;
+          //printf("%d.%d write receiver status OFF, poll(%d)\n", Cycle(), Subcycle(), polled_io);
+        }
+      }
+      break;
+
+      // Transmit Buffer
     case 1022:
-      if (subcycles % 4 == 0 &&  MemoryChip3[1023][12]  =='1'
+      if (FirstSubcycle() &&  MemoryChip3[1023][12]  =='1'
           &&  MemoryChip3[1023][14]  =='1') {
         for (I = 0 ; I < DataWordSize-1 ; I++)
           MemoryChip3[Offset][I] = Data[I] ;
@@ -156,23 +162,9 @@ Bit         WriteBit ;
       }
       break;
 
-    case 1021:
-      if (Data[12]  =='1') {
-        for (I = 0 ; I < DataWordSize-1 ; I++)
-          MemoryChip3[Offset][I] = '0';
-        polled_io = 1;
-        MemoryChip3[Offset][14] = '0';
-        MemoryChip3[Offset][15] = '1';
-        MemoryChip3[Offset][12] = '1';
-      } else {
-        for (I = 0 ; I < DataWordSize-1 ; I++)
-          MemoryChip3[Offset][I] = '0';
-        polled_io = 0;
-      }
-      break;
-
+      // Transmit status
     case 1023:
-      if (Data[12]  =='1') {
+      if (Data[12] == '1') {
         for (I = 0 ; I < DataWordSize-1 ; I++)
           MemoryChip3[Offset][I] = '0';
         MemoryChip3[Offset][14] = '1';
@@ -181,11 +173,9 @@ Bit         WriteBit ;
       } else {
         for (I = 0 ; I < DataWordSize-1 ; I++)
           MemoryChip3[Offset][I] = '0';
-        polled_io = 0;
       }
       break;
-
-    case 1020: break;
+      
     }
   }
 }			/* END ActivateMemoryChip3 */
