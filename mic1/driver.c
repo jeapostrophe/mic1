@@ -101,21 +101,122 @@ void debugger_show_locations(int ml, int low_mult, int hi_mult, const char *labe
   }
 }
 
-main (argc, argv)
-int  argc;
-char *argv[];
-{
+typedef enum { EMU_CPU, EMU_DEBUG, EMU_EXIT } emulator_st;
+
+void initialize_emulator(const char *prom, const char *program, int pc, int sp) {
+  BurnInProm (prom);
+  InitializeMemory (program) ;
+  InitializeSymbolTable (program) ;
+  InitializePCandStackPointer (pc, sp) ;
+}
+
+emulator_st run_emulator_cpu() {
+  int ClockCycle;
+  Bit ReadBit = Zero;
+  Bit WriteBit = Zero;
   DataBusType    Data ;
   AddressBusType Address;
-  Bit ReadBit ;
-  Bit WriteBit ;
-  int ClockCycle, mem_location, ml, i, j, m, col, mem_offset;
-  char query_val[QUERY_LEN];
-  char mem_loc[17];
+  
+  strcpy (Address, "000000000000") ;
+  strcpy (Data,    "0000000000000000") ;
 
+  while (1) {
+    GeneratePulse () ;
+
+    if (polled_io == 2 && FirstSubcycle() ) {
+      Set_nonblocking_io();
+      input_char = fgetc(stdin);
+      if (input_char != EOF) {
+        polled_io = 0;
+        //printf("%d.%d read (%d) poll(%d)\n", Cycle(), Subcycle(), input_char, polled_io);
+        MemoryChip3[1021][14] = '1';
+        MemoryChip3[1021][15] = '0';
+        Set_blocking_io();
+      }
+    } else {
+      //printf("%d.%d no read\n", Cycle(), Subcycle());
+    }
+       
+    ActivateCpu (Address, Data, &ReadBit, &WriteBit) ;  
+    ActivateMemory (Address, Data, ReadBit, WriteBit) ;  
+
+    // Escape to the debugger
+    if ((ReadBit == One) && (WriteBit == One) && ClockCycle != Cycle() ) {
+      Set_blocking_io();
+      return EMU_DEBUG;
+    }
+  }
+
+  return EMU_CPU;
+}
+
+emulator_st run_emulator_debugger() {
+  DumpRegisters () ; 
+  int ClockCycle = Cycle () ;
+  printf ("\nMicroPC        : %d\n", MicroPc);
+  printf ("Total cycles   : %d\n\n", ClockCycle);
+
+  while (1) {
+    printf("Type address to view memory, [q]uit, [c]ontinue, <Enter> for symbol table:\n");
+    debugger_read();
+    if (query[0] == 'c') {
+      return EMU_CPU;
+    } else if (query[0] == '\n') {
+      ShowSymbolTable();
+    } else if (query[0] == 0 || query[0] == 'q' || query[0] == 'Q') {
+      return EMU_EXIT;
+    } else {
+      char query_val[QUERY_LEN];
+      sscanf(query, "%s", query_val);
+      int ml = atoi(LookupSymbol(query_val));
+      if (ensure_valid_addr(ml)) continue;
+      
+      debugger_read_mem_loc(ml);
+      
+      printf("Type  <Enter>  to continue debugging\nType        q  to quit\nType        f for forward range\nType        b for backward range:\n");
+      debugger_read();
+      if (query[0] == 0 || query[0] == 'q' || query[0] == 'Q') {
+        return EMU_EXIT;
+      } else if (query[0] == 'f' || query[0] == 'F') {
+        debugger_show_locations(ml, 0, 1, "forward");
+      } else if (query[0] == 'b' || query[0] == 'B') {
+        debugger_show_locations(ml, 1, 0, "reverse");
+      }
+    }
+  }
+
+  return EMU_CPU;
+}
+
+emulator_st run_emulator_exit() {
+  printf("MIC-1 emulator finishing, goodbye\n\n");
+  exit(1);
+}
+
+void run_emulator(const char *prom, const char *program, int pc, int sp) {
+  initialize_emulator(prom, program, pc, sp);
+  
+  emulator_st st = EMU_CPU;
+  while (1) {
+    switch (st) {
+      case EMU_CPU:
+        st = run_emulator_cpu();
+        break;
+      case EMU_DEBUG:
+        st = run_emulator_debugger();
+        break;
+      case EMU_EXIT:
+        st = run_emulator_exit();
+        break;
+    }
+  }
+}
+  
+int main (int argc, char *argv[]) {
   char   promfile[80];
   char   programfile[80];
-  int    pc, sp;
+  int pc;
+  int sp;    
 
   if((original_stdin_channel_flags = fcntl(0, F_GETFL, 0)) == -1){
 	perror("fnctl failed: ");
@@ -154,77 +255,9 @@ char *argv[];
     exit(2);
   }
 
-  BurnInProm (promfile);
-  InitializeMemory (programfile) ;
-  InitializeSymbolTable (programfile) ;
-  InitializePCandStackPointer (pc, sp) ;
-  strcpy (Address, "000000000000") ;
-  strcpy (Data,    "0000000000000000") ;
-  ReadBit  = Zero ;
-  WriteBit = Zero ;
+  run_emulator(promfile, programfile, pc, sp);
 
- tag: for ( ; ; ) {
-    GeneratePulse () ;
-
-    if (polled_io == 2 && FirstSubcycle() ) {
-      Set_nonblocking_io();
-      input_char = fgetc(stdin);
-      if (input_char != EOF) {
-        polled_io = 0;
-        //printf("%d.%d read (%d) poll(%d)\n", Cycle(), Subcycle(), input_char, polled_io);
-        MemoryChip3[1021][14] = '1';
-        MemoryChip3[1021][15] = '0';
-        Set_blocking_io();
-      }
-    } else {
-      //printf("%d.%d no read\n", Cycle(), Subcycle());
-    }
-       
-    ActivateCpu (Address, Data, &ReadBit, &WriteBit) ;  
-    ActivateMemory (Address, Data, ReadBit, WriteBit) ;  
-
-    // Escape to the debugger
-    if ((ReadBit == One) && (WriteBit == One) && ClockCycle != Cycle() ) {
-      Set_blocking_io();
-      break ;
-    }
-  }
-     
-  DumpRegisters () ; 
-  ClockCycle = Cycle () ;
-  printf ("\nMicroPC        : %d\n", MicroPc);
-  printf ("Total cycles   : %d\n\n", ClockCycle);
-
-  while (1) {
-    printf("Type address to view memory, [q]uit, [c]ontinue, <Enter> for symbol table:\n");
-    debugger_read();
-    if (query[0] == 'c') {
-      goto tag;
-    } else if (query[0] == '\n') {
-      ShowSymbolTable();
-    } else if (query[0] == 0 || query[0] == 'q' || query[0] == 'Q') {
-      break;
-    } else {
-      sscanf(query, "%s", query_val);
-      ml = atoi(LookupSymbol(query_val));
-      if (ensure_valid_addr(ml)) continue;
-      
-      debugger_read_mem_loc(ml);
-      
-      printf("Type  <Enter>  to continue debugging\nType        q  to quit\nType        f for forward range\nType        b for backward range:\n");
-      debugger_read();
-      if (query[0] == 0 || query[0] == 'q' || query[0] == 'Q') {
-        break;
-      } else if (query[0] == 'f' || query[0] == 'F') {
-        debugger_show_locations(ml, 0, 1, "forward");
-      } else if (query[0] == 'b' || query[0] == 'B') {
-        debugger_show_locations(ml, 1, 0, "reverse");
-      }
-    }
-  }
-  
-  printf("MIC-1 emulator finishing, goodbye\n\n");
-  exit(1);
+  return 0;
 }			/* END Driver */
 
 /* passed an array of bytes of 16 ascii 1s and 0s */
