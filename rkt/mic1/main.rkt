@@ -363,15 +363,14 @@
 (define Shifter void)
 (define RegisterSet void)
 
-;; XXX
-;; XXX registers need to be arguments so the debugger can read them
 (define (MIC-1 Microcode
+               Registers
                Read? Write?
                MAR MAR?
                MBR MBR?)
-  (define μAddrSpace 8)
-  (define WordBits 16)
-  (define RegisterCount 16)
+  (define μAddrSpace (integer-length (vector-length Microcode)))
+  (define WordBits (length MBR))
+  (define RegisterCount (length Registers))
   (define RegisterBits (integer-length RegisterCount))
 
   ;; Aliases
@@ -412,12 +411,13 @@
        (Mux MicroSeqLogic-out MPC-Inc-out MIR:ADDR Mmux-out)
        (Shifter ALU-out MIR:SH Shifter-out)
        (RegisterDecoder Clock:4 MIR:C MIR:ENC Csel)
-       (RegisterSet Clock:4 C-Bus Csel Asel Bsel A-Bus B-Bus)
+       (RegisterSet Registers Clock:4 C-Bus Csel Asel Bsel A-Bus B-Bus)
        (Latch Clock:4 Mmux-out MPC-out)
        (Increment MPC-out MPC-Inc-carry MPC-Inc-out)
 
        (And MIR:MAR Clock:3 MAR?)
        (And MIR:MBR Clock:4 MBR?)))
+
 (module+ main
   (define Microcode
     ;; XXX
@@ -426,8 +426,11 @@
     Read? Write?
     [MAR 16] MAR?
     [MBR 16] MBR?)
+  (define Registers
+    (build-list 16 (λ (i) (Bundle 16))))
   ;; XXX
   (MIC-1 Microcode
+         Registers
          Read? Write?
          MAR MAR?
          MBR MBR?))
