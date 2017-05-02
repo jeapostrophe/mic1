@@ -123,6 +123,15 @@
           '(((0) (1))
             ((1) (0)))))
 
+(define (Id a o)
+  (Net (t)
+       (Not a t)
+       (Not t o)))
+(module+ test
+  (chk-tt Id
+          '(((0) (0))
+            ((1) (1)))))
+
 (define (And a b o)
   (Net (t)
        (Nand a b t)
@@ -292,18 +301,53 @@
 
   (chk-adder 4011 777))
 
+(define (Dupe src dst)
+  (cond
+    [(and (wire? src) (wire? dst))
+     (Id src dst)]
+    [else
+     (map Dupe src dst)]))
+
+;; xxx connect TRUE to sequence of half-adders
+(define (Increment A Cout Inc)
+  (define B
+    (for/list ([a (in-list A)]
+               [i (in-naturals)])
+      (if (zero? i)
+        TRUE
+        FALSE)))
+  (Adder A B FALSE Cout Inc))
+
+(module+ test
+  (define (chk-increment a #:N [GN #f])
+    (define N (or GN (integer-length a)))
+    (with-chk (['a a]
+               ['N N])
+      (define A (Bundle N))
+      (define Inc (Bundle N))
+      (define Cout (Wire))
+      (write-number! A a)
+      (define some-net (Increment A Cout Inc))
+      (simulate! some-net)
+      (with-chk (['Inc (map bread Inc)])
+        (chk (cons (read-number Inc)
+                   (bread Cout))
+             (cons (modulo (+ a 1) (expt 2 N))
+                   (> (+ a 1) (sub1 (expt 2 N))))))))
+  
+  (for ([N (in-range 1 5)])
+    (define MAX (expt 2 N))
+    (for* ([a (in-range MAX)])
+      (chk-increment a #:N N))))
+
 ;; XXX
 (define ControlStore void)
 (define RegisterDecoder void)
 (define Latch void)
-(define Dupe void)
 (define ALU void)
 (define MicroSeqLogic void)
 (define Shifter void)
 (define RegisterSet void)
-
-;; xxx connect TRUE to sequence of half-adders
-(define Increment void)
 
 ;; XXX
 (define (MIC-1 Microcode
@@ -314,6 +358,13 @@
   (define WordBits 16)
   (define RegisterCount 16)
   (define RegisterBits (integer-length RegisterCount))
+
+  ;; Aliases
+  (define B-latch-out MAR)
+  (define MIR:RD Read?)
+  (define MIR:WR Write?)
+  (define C-Bus MBR)
+  (define Shifter-out C-Bus)
   (Net (#;_
         Clock:1 Clock:2 Clock:3 Clock:4
         N Z MicroSeqLogic-out
@@ -326,7 +377,7 @@
         [Asel RegisterCount] [Bsel RegisterCount] [Csel RegisterCount]
 
         [A-Bus WordBits] [B-Bus WordBits] [C-Bus WordBits]
-        [A-latch-out WordBits] [B-latch-out WordBits]
+        [A-latch-out WordBits]
         [Amux-out WordBits] [ALU-out WordBits] [Shifter-out WordBits])
 
        (Clock Clock:1 Clock:2 Clock:3 Clock:4)
@@ -339,20 +390,15 @@
        (RegisterDecoder TRUE MIR:A TRUE Asel)
        (Latch Clock:2 A-Bus A-latch-out)
        (Latch Clock:2 B-Bus B-latch-out)
-       (Dupe B-latch-out MAR)
        (Mux MIR:AMUX MBR A-latch-out Amux-out)
        (ALU Amux-out B-Bus MIR:ALU ALU-out N Z)
        (MicroSeqLogic N Z MIR:COND MicroSeqLogic-out)
        (Mux MicroSeqLogic-out MPC-Inc-out MIR:ADDR Mmux-out)
        (Shifter ALU-out MIR:SH Shifter-out)
-       (Dupe Shifter-out MBR)
-       (Dupe Shifter-out C-Bus)
        (RegisterDecoder Clock:4 MIR:C MIR:ENC Csel)
        (RegisterSet Clock:4 C-Bus Csel Asel Bsel A-Bus B-Bus)
        (Latch Clock:4 Mmux-out MPC-out)
        (Increment MPC-out MPC-Inc-out)
 
        (And MIR:MAR Clock:3 MAR?)
-       (And MIR:MBR Clock:4 MBR?)
-       (Dupe MIR:RD Read?)
-       (Dupe MIR:WR Write?)))
+       (And MIR:MBR Clock:4 MBR?)))
