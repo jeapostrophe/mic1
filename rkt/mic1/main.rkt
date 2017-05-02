@@ -13,7 +13,9 @@
 (struct wire (value))
 
 (struct Nand (a b o))
+;; xxx remove
 (struct latch (latch? prev next))
+;; xxx remove
 (struct clock (i os))
 
 ;; Constructors
@@ -28,8 +30,11 @@
              #:attr d (syntax/loc #'i (Wire)))
     (pattern [i:id n:expr]
              #:attr d (syntax/loc #'i (Bundle n)))))
+(define-simple-macro (define-wires w:wire-spec ...)
+  (begin (define w.i w.d) ...))
 (define-simple-macro (Net (w:wire-spec ...) b ...)
-  (let ([w.i w.d] ...)
+  (let ()
+    (define-wires w ...)
     (list* b ...)))
 (define (Cell) (latch TRUE (box #f) (box #f)))
 
@@ -278,11 +283,7 @@
     (with-chk (['a a]
                ['b b]
                ['N N])
-      (define A (Bundle N))
-      (define B (Bundle N))
-      (define Cin (Wire))
-      (define Sum (Bundle N))
-      (define Cout (Wire))
+      (define-wires [A N] [B N] Cin [Sum N] Cout)
       (write-number! A a)
       (write-number! B b)
       (define some-net (Adder A B Cin Cout Sum))
@@ -308,24 +309,37 @@
     [else
      (map Dupe src dst)]))
 
-;; xxx connect TRUE to sequence of half-adders
-(define (Increment A Cout Inc)
-  (define B
-    (for/list ([a (in-list A)]
-               [i (in-naturals)])
-      (if (zero? i)
-        TRUE
-        FALSE)))
-  (Adder A B FALSE Cout Inc))
+(define (Half-Adder A B C S)
+  (Net ()
+       (Xor A B S)
+       (And A B C)))
+(module+ test
+  (chk-tt
+   Half-Adder
+   '(((0    0)  (0  0))
+     ((1    0)  (0  1))
+     ((0    1)  (0  1))
+     ((1    1)  (1  0)))))
 
+(define (Increment A Cout Inc)
+  (define N (length A))
+  (unless (= N (length Inc))
+    (error 'Increment "Output is not same length as input"))
+  (define-wires [Cs (sub1 N)])
+  (define B (cons TRUE Cs))
+  (define C (snoc Cs Cout))
+  (for/fold ([nt Mt])
+            ([a (in-list A)]
+             [b (in-list B)]
+             [c (in-list C)]
+             [i (in-list Inc)])
+    (Net () nt (Half-Adder a b c i))))
 (module+ test
   (define (chk-increment a #:N [GN #f])
     (define N (or GN (integer-length a)))
     (with-chk (['a a]
                ['N N])
-      (define A (Bundle N))
-      (define Inc (Bundle N))
-      (define Cout (Wire))
+      (define-wires [A N] [Inc N] Cout)
       (write-number! A a)
       (define some-net (Increment A Cout Inc))
       (simulate! some-net)
@@ -334,7 +348,7 @@
                    (bread Cout))
              (cons (modulo (+ a 1) (expt 2 N))
                    (> (+ a 1) (sub1 (expt 2 N))))))))
-  
+
   (for ([N (in-range 1 5)])
     (define MAX (expt 2 N))
     (for* ([a (in-range MAX)])
@@ -350,6 +364,7 @@
 (define RegisterSet void)
 
 ;; XXX
+;; XXX registers need to be arguments so the debugger can read them
 (define (MIC-1 Microcode
                Read? Write?
                MAR MAR?
@@ -373,7 +388,8 @@
         MIR:ENC
         [MIR:C RegisterBits] [MIR:B RegisterBits] [MIR:A RegisterBits]
         [MIR:ADDR μAddrSpace]
-        [MPC-out μAddrSpace] [Mmux-out μAddrSpace] [MPC-Inc-out μAddrSpace]
+        [MPC-out μAddrSpace] [Mmux-out μAddrSpace]
+        MPC-Inc-carry [MPC-Inc-out μAddrSpace]
         [Asel RegisterCount] [Bsel RegisterCount] [Csel RegisterCount]
 
         [A-Bus WordBits] [B-Bus WordBits] [C-Bus WordBits]
@@ -398,7 +414,20 @@
        (RegisterDecoder Clock:4 MIR:C MIR:ENC Csel)
        (RegisterSet Clock:4 C-Bus Csel Asel Bsel A-Bus B-Bus)
        (Latch Clock:4 Mmux-out MPC-out)
-       (Increment MPC-out MPC-Inc-out)
+       (Increment MPC-out MPC-Inc-carry MPC-Inc-out)
 
        (And MIR:MAR Clock:3 MAR?)
        (And MIR:MBR Clock:4 MBR?)))
+(module+ main
+  (define Microcode
+    ;; XXX
+    (vector))
+  (define-wires
+    Read? Write?
+    [MAR 16] MAR?
+    [MBR 16] MBR?)
+  ;; XXX
+  (MIC-1 Microcode
+         Read? Write?
+         MAR MAR?
+         MBR MBR?))
