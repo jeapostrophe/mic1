@@ -22,9 +22,6 @@
 (struct clock (i os))
 
 ;; Constructors
-(define TRUE (wire (box-immutable #t)))
-(define FALSE (wire (box-immutable #f)))
-
 (define Mt null)
 (begin-for-syntax
   (define-syntax-class wire-spec
@@ -38,7 +35,7 @@
 (define-simple-macro (Net (w:wire-spec ...) b ...)
   (let ()
     (define-wires w ...)
-    (list* b ...)))
+    (list b ...)))
 (define (Cell) (latch TRUE (box #f) (box #f)))
 
 (define (Wire) (wire (box #f)))
@@ -47,6 +44,10 @@
     (Wire)))
 
 (define (Clock . os) (clock (box 0) os))
+
+(define TRUE (wire (box-immutable #t)))
+(define FALSE (wire (box-immutable #f)))
+(define GROUND (Wire))
 
 ;; Simulator
 (define bread
@@ -270,7 +271,8 @@
        (syntax/loc stx
          (begin
            (define (the-chk #:N N iw.i ...)
-             (with-chk (['Circuit 'the-circuit]
+             (with-chk (['N N]
+                        ['Circuit 'the-circuit]
                         ['iw.i iw.i] ...)
                (define-wires ow ...)
                (define (in-write v w)
@@ -386,12 +388,47 @@
     (chk Out
          (modulo (arithmetic-shift In
                                    (cond [Right? -1]
-                                         [Left? +1] 
+                                         [Left? +1]
                                          [else 0]))
                  (expt 2 N)))))
 
+(define (Decoder A*B A B)
+  (Net ()
+       (Not A*B A)
+       (Id A*B B)))
+(module+ test
+  (chk-tt
+   Decoder
+   '(((0) (1 0))
+     ((1) (0 1)))))
+
+(define (Decoder/N Which Outs)
+  (define N (length Which))
+  (unless (= (length Outs) (expt 2 N))
+    (error 'Decoder/N "Insufficient output signals"))
+  (let loop ([N N] [Which (reverse Which)] [Outs Outs])
+    (cond
+      [(= N 1) (Decoder (first Which) (first Outs) (second Outs))]
+      [else
+       ;; NOTE It might be possible to do this more efficient with the
+       ;; recursion removing half of the bits to decode each time, but
+       ;; I'm not sure how to generalize it.
+       (define next-N (sub1 N))
+       (define next-2N (expt 2 next-N))
+       (define-values (fst-Outs snd-Outs) (split-at Outs next-2N))
+       (Net (OnTop OnBottom [NewOuts next-2N])
+            (Decoder (first Which) OnBottom OnTop)
+            (loop next-N (rest Which) NewOuts)
+            (map (λ (w1 w2) (And OnBottom w1 w2)) NewOuts fst-Outs)
+            (map (λ (w1 w2) (And OnTop w1 w2)) NewOuts snd-Outs))])))
+(module+ test
+  (define-chk-num chk-decoder
+    #:N N #:in ([Which N]) #:out ([Outs (expt 2 N)])
+    #:circuit Decoder/N #:exhaust 6
+    #:check
+    (chk Outs (arithmetic-shift 1 Which))))
+
 ;; XXX
-(define Decoder void)
 (define Encoder void)
 (define ControlStore void)
 (define RegisterDecoder void)
@@ -416,23 +453,23 @@
   (define MIR:WR Write?)
   (define C-Bus MBR)
   (define Shifter-out C-Bus)
-  (Net (GROUND
-        Clock:1 Clock:2 Clock:3 Clock:4
-        N Z MicroSeqLogic-out
-        MIR:AMUX [MIR:COND 2] [MIR:ALU 2] [MIR:SH 2]
-        MIR:MBR MIR:MAR MIR:RD MIR:WR
-        MIR:ENC
-        [MIR:C RegisterBits] [MIR:B RegisterBits] [MIR:A RegisterBits]
-        [MIR:ADDR μAddrSpace]
-        [MPC-out μAddrSpace] [Mmux-out μAddrSpace]
-        MPC-Inc-carry [MPC-Inc-out μAddrSpace]
-        [Asel RegisterCount] [Bsel RegisterCount] [Csel RegisterCount]
+  (define-wires
+    Clock:1 Clock:2 Clock:3 Clock:4
+    N Z MicroSeqLogic-out
+    MIR:AMUX [MIR:COND 2] [MIR:ALU 2] [MIR:SH 2]
+    MIR:MBR MIR:MAR
+    MIR:ENC
+    [MIR:C RegisterBits] [MIR:B RegisterBits] [MIR:A RegisterBits]
+    [MIR:ADDR μAddrSpace]
+    [MPC-out μAddrSpace] [Mmux-out μAddrSpace]
+    MPC-Inc-carry [MPC-Inc-out μAddrSpace]
+    [Asel RegisterCount] [Bsel RegisterCount] [Csel RegisterCount]
 
-        [A-Bus WordBits] [B-Bus WordBits] [C-Bus WordBits]
-        [A-latch-out WordBits]
-        [Amux-out WordBits] [ALU-out WordBits]
-        Shifter-Left? Shifter-Right? [Shifter-out WordBits])
-
+    [A-Bus WordBits] [B-Bus WordBits]
+    [A-latch-out WordBits]
+    [Amux-out WordBits] [ALU-out WordBits]
+    Shifter-Left? Shifter-Right?)
+  (Net ()
        (Clock Clock:1 Clock:2 Clock:3 Clock:4)
        (ControlStore Microcode
                      Clock:1 MPC-out
@@ -447,7 +484,7 @@
        (ALU Amux-out B-Bus MIR:ALU ALU-out N Z)
        (MicroSeqLogic N Z MIR:COND MicroSeqLogic-out)
        (Mux MicroSeqLogic-out MPC-Inc-out MIR:ADDR Mmux-out)
-       (Decoder MIR:SH (list GROUND Shifter-Right? Shifter-Left? GROUND))
+       (Decoder/N MIR:SH (list GROUND Shifter-Right? Shifter-Left? GROUND))
        (Shifter/N Shifter-Left? Shifter-Right? ALU-out Shifter-out)
        (RegisterDecoder Clock:4 MIR:C MIR:ENC Csel)
        (RegisterSet Registers Clock:4 C-Bus Csel Asel Bsel A-Bus B-Bus)
