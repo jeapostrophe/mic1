@@ -38,9 +38,7 @@
 (define (Cells n) (build-list n (λ (i) (Cell))))
 
 (define (Wire) (wire (box #f)))
-(define (Bundle n)
-  (for/list ([i (in-range n)])
-    (Wire)))
+(define (Bundle n) (build-list n (λ (i) (Wire))))
 
 (define TRUE (wire (box-immutable #t)))
 (define FALSE (wire (box-immutable #f)))
@@ -98,16 +96,20 @@
 
 ;; Exhaustive testing
 (module+ test
+  (define (tt-make-in in)
+    (cond
+      [(list? in) (map tt-make-in in)]
+      [else
+       (define w (Wire))
+       (bwrite! w (= 1 in))
+       w]))
   (define (chk-tt f ls)
     (with-chk (['f f])
       (for ([l (in-list ls)])
         (match-define (list ins outs) l)
-        (define inws (Bundle (length ins)))
+        (define inws (tt-make-in ins))
         (define outws (Bundle (length outs)))
         (define n (apply f (append inws outws)))
-        (for ([in (in-list ins)]
-              [inw (in-list inws)])
-          (bwrite! inw (= 1 in)))
         (simulate! n)
         (with-chk (['ins ins])
           (chk (map (λ (w) (if (bread w) 1 0)) outws)
@@ -162,6 +164,26 @@
             ((0 1) (1))
             ((1 0) (1))
             ((1 1) (1)))))
+
+(define (Or* . l)
+  (match l
+    [(list Out) (Id FALSE Out)]
+    [(list X Out) (Id X Out)]
+    [(list A B Out) (Or A B Out)]
+    [(list* A B More)
+     (Net (T)
+          (Or A B T)
+          (apply Or* T More))]))
+(module+ test
+  (chk-tt Or*
+          '(((0 0 0) (0))
+            ((0 0 1) (1))
+            ((0 1 0) (1))
+            ((0 1 1) (1))
+            ((1 0 0) (1))
+            ((1 0 1) (1))
+            ((1 1 0) (1))
+            ((1 1 1) (1)))))
 
 (define (Nor a b o)
   (Net (t)
@@ -392,6 +414,9 @@
    '(((0) (1 0))
      ((1) (0 1)))))
 
+(define (And/wb w0 bi bo)
+  (map (λ (w1 w2) (And w0 w1 w2)) bi bo))
+
 (define (Decoder/N Which Outs)
   (define N (length Which))
   (unless (= (length Outs) (expt 2 N))
@@ -410,8 +435,8 @@
        (Net (OnTop OnBottom [NewOuts next-2N])
             (Decoder (first Which) OnBottom OnTop)
             (loop next-N (rest Which) NewOuts)
-            (map (λ (w1 w2) (And OnBottom w1 w2)) NewOuts fst-Outs)
-            (map (λ (w1 w2) (And OnTop w1 w2)) NewOuts snd-Outs))])))
+            (And/wb OnBottom NewOuts fst-Outs)
+            (And/wb OnTop NewOuts snd-Outs))])))
 (module+ test
   (define-chk-num chk-decoder
     #:N N #:in ([Which N]) #:out ([Outs (expt 2 N)])
@@ -451,20 +476,40 @@
   (for ([n (in-range 1 3)])
     (chk-clock (expt 2 n))))
 
+(define (MicroSeqLogic N Z Code Out)
+  (Net (JumpOnN! JumpOnZ! NoJump JumpOnN JumpOnZ JumpAlways)
+       (Decoder/N Code (list NoJump JumpOnN JumpOnZ JumpAlways))
+       (And JumpOnN N JumpOnN!)
+       (And JumpOnZ Z JumpOnZ!)
+       (Or* JumpOnN! JumpOnZ! JumpAlways Out)))
+(module+ test
+  (chk-tt MicroSeqLogic
+          (for*/list ([N (in-range 2)] [Z (in-range 2)]
+                      [C0 (in-range 2)] [C1 (in-range 2)])
+            (define Code (+ C0 (* 2 C1)))
+            (list (list N Z (list C0 C1))
+                  (list
+                   (if (or (and (= 1 N) (= Code 1))
+                           (and (= 1 Z) (= Code 2))
+                           (= Code 3))
+                     1
+                     0))))))
+
 ;; XXX
-(define ControlStore void)
+(define ROM void)
 (define RegisterRead void)
 (define Latch void)
 (define ALU void)
-(define MicroSeqLogic void)
 (define RegisterSet void)
+(define Cut/N void)
 
 (define (MIC-1 Microcode
                Registers
                Read? Write?
                MAR MAR?
                MBR MBR?)
-  (define μAddrSpace (integer-length (sub1 (vector-length Microcode))))
+  (define μAddrSpace (integer-length (sub1 (length Microcode))))
+  (define μCodeLength (integer-length (first Microcode)))
   (define WordBits (length MBR))
   (define RegisterCount (length Registers))
   (define RegisterBits (integer-length (sub1 RegisterCount)))
@@ -478,6 +523,7 @@
   (define-wires
     Clock:1 Clock:2 Clock:3 Clock:4
     N Z MicroSeqLogic-out
+    [pre-MIR μCodeLength] [MIR μCodeLength]
     MIR:AMUX [MIR:COND 2] [MIR:ALU 2] [MIR:SH 2]
     MIR:MBR MIR:MAR
     MIR:ENC
@@ -493,11 +539,12 @@
     Shifter-Left? Shifter-Right? Write-C?)
   (Net ()
        (Clock (list Clock:1 Clock:2 Clock:3 Clock:4))
-       (ControlStore Microcode
-                     Clock:1 MPC-out
-                     MIR:AMUX MIR:COND MIR:ALU MIR:SH
-                     MIR:MBR MIR:MAR MIR:RD MIR:WR
-                     MIR:ENC MIR:C MIR:B MIR:A MIR:ADDR)
+       (ROM Microcode MPC-out pre-MIR)
+       (Latch Clock:1 pre-MIR MIR)
+       (Cut/N MIR
+              (list MIR:AMUX MIR:COND MIR:ALU MIR:SH
+                    MIR:MBR MIR:MAR MIR:RD MIR:WR
+                    MIR:ENC MIR:C MIR:B MIR:A MIR:ADDR))
        (Decoder/N MIR:A Asel)
        (Decoder/N MIR:B Bsel)
        (Decoder/N MIR:C Csel)
@@ -524,13 +571,13 @@
   (define RegisterCount 16)
   (define Microcode
     ;; XXX
-    (vector 0 0))
+    (list 0 0))
   (define-wires
     Read? Write?
     [MAR WordSize] MAR?
     [MBR WordSize] MBR?)
   (define Registers
-    (build-list RegisterCount (λ (i) (Bundle WordSize))))
+    (build-list RegisterCount (λ (i) (Cells WordSize))))
   (define the-mic1
     (MIC-1 Microcode
            Registers
