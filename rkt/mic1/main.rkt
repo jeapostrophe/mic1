@@ -18,8 +18,6 @@
 (struct Nand (a b o))
 ;; xxx remove and use SR-latch?
 (struct latch (latch? prev next))
-;; xxx remove and use cell with a cycle and increment?
-(struct clock (i os))
 
 ;; Constructors
 (define Mt null)
@@ -37,13 +35,12 @@
     (define-wires w ...)
     (list b ...)))
 (define (Cell) (latch TRUE (box #f) (box #f)))
+(define (Cells n) (build-list n (λ (i) (Cell))))
 
 (define (Wire) (wire (box #f)))
 (define (Bundle n)
   (for/list ([i (in-range n)])
     (Wire)))
-
-(define (Clock . os) (clock (box 0) os))
 
 (define TRUE (wire (box-immutable #t)))
 (define FALSE (wire (box-immutable #f)))
@@ -93,12 +90,6 @@
     (match-lambda
       [(Nand a b o)
        (bwrite! o (not (and (bread a) (bread b))))]
-      [(clock ib os)
-       (define ni (add1 (unbox ib)))
-       (set-box! ib ni)
-       (for ([o (in-list os)]
-             [i (in-naturals)])
-         (bwrite! o (= i ni)))]
       [(latch ? pb nb)
        (when (bread ?)
          (set-box! pb (unbox nb)))]))
@@ -130,7 +121,6 @@
             ((1 0) (1))
             ((1 1) (0)))))
 
-;; xxx test clock
 ;; xxx test latch
 ;; xxx test cell
 
@@ -405,7 +395,8 @@
 (define (Decoder/N Which Outs)
   (define N (length Which))
   (unless (= (length Outs) (expt 2 N))
-    (error 'Decoder/N "Insufficient output signals"))
+    (error 'Decoder/N "Insufficient output signals: N=~v, ~v should be ~v"
+           N (length Outs) (expt 2 N)))
   (let loop ([N N] [Which (reverse Which)] [Outs Outs])
     (cond
       [(= N 1) (Decoder (first Which) (first Outs) (second Outs))]
@@ -428,10 +419,41 @@
     #:check
     (chk Outs (arithmetic-shift 1 Which))))
 
+(define (log2 x)
+  (define r (/ (log x) (log 2)))
+  (and (integer? r)
+       (inexact->exact r)))
+(module+ test
+  (for ([i (in-range 1 10)])
+    (define x (expt 2 i))
+    (chk (log2 x) i
+         (log2 (add1 x)) #f)))
+(define (Clock Os)
+  (define 2N (length Os))
+  (define N (log2 2N))
+  (unless (and N (> N 0))
+    (error 'Clock "Must receive 2^n, n>0 output signals"))
+  (define Code (Cells N))
+  (Net ()
+       Code
+       (Increment/N Code GROUND Code)
+       (Decoder/N Code Os)))
+(module+ test
+  (define (chk-clock N)
+    (with-chk (['N N])
+      (define Os (Bundle N))
+      (define C (Clock Os))
+      (for ([i (in-range N)])
+        (with-chk (['i i])
+          (simulate! C)
+          (chk (read-number Os)
+               (arithmetic-shift 1 i))))))
+  (for ([n (in-range 1 3)])
+    (chk-clock (expt 2 n))))
+
 ;; XXX
-(define Encoder void)
 (define ControlStore void)
-(define RegisterDecoder void)
+(define RegisterRead void)
 (define Latch void)
 (define ALU void)
 (define MicroSeqLogic void)
@@ -442,10 +464,10 @@
                Read? Write?
                MAR MAR?
                MBR MBR?)
-  (define μAddrSpace (integer-length (vector-length Microcode)))
+  (define μAddrSpace (integer-length (sub1 (vector-length Microcode))))
   (define WordBits (length MBR))
   (define RegisterCount (length Registers))
-  (define RegisterBits (integer-length RegisterCount))
+  (define RegisterBits (integer-length (sub1 RegisterCount)))
 
   ;; Aliases
   (define B-latch-out MAR)
@@ -468,16 +490,19 @@
     [A-Bus WordBits] [B-Bus WordBits]
     [A-latch-out WordBits]
     [Amux-out WordBits] [ALU-out WordBits]
-    Shifter-Left? Shifter-Right?)
+    Shifter-Left? Shifter-Right? Write-C?)
   (Net ()
-       (Clock Clock:1 Clock:2 Clock:3 Clock:4)
+       (Clock (list Clock:1 Clock:2 Clock:3 Clock:4))
        (ControlStore Microcode
                      Clock:1 MPC-out
                      MIR:AMUX MIR:COND MIR:ALU MIR:SH
                      MIR:MBR MIR:MAR MIR:RD MIR:WR
                      MIR:ENC MIR:C MIR:B MIR:A MIR:ADDR)
-       (RegisterDecoder TRUE MIR:B TRUE Bsel)
-       (RegisterDecoder TRUE MIR:A TRUE Asel)
+       (Decoder/N MIR:A Asel)
+       (Decoder/N MIR:B Bsel)
+       (Decoder/N MIR:C Csel)
+       (RegisterRead Registers Asel A-Bus)
+       (RegisterRead Registers Bsel B-Bus)
        (Latch Clock:2 A-Bus A-latch-out)
        (Latch Clock:2 B-Bus B-latch-out)
        (Mux MIR:AMUX MBR A-latch-out Amux-out)
@@ -486,8 +511,8 @@
        (Mux MicroSeqLogic-out MPC-Inc-out MIR:ADDR Mmux-out)
        (Decoder/N MIR:SH (list GROUND Shifter-Right? Shifter-Left? GROUND))
        (Shifter/N Shifter-Left? Shifter-Right? ALU-out Shifter-out)
-       (RegisterDecoder Clock:4 MIR:C MIR:ENC Csel)
-       (RegisterSet Registers Clock:4 C-Bus Csel Asel Bsel A-Bus B-Bus)
+       (And Clock:4 MIR:ENC Write-C?)
+       (RegisterSet Registers Write-C? C-Bus Csel)
        (Latch Clock:4 Mmux-out MPC-out)
        (Increment/N MPC-out MPC-Inc-carry MPC-Inc-out)
 
@@ -495,15 +520,17 @@
        (And MIR:MBR Clock:4 MBR?)))
 
 (module+ main
+  (define WordSize 16)
+  (define RegisterCount 16)
   (define Microcode
     ;; XXX
-    (vector 0))
+    (vector 0 0))
   (define-wires
     Read? Write?
-    [MAR 16] MAR?
-    [MBR 16] MBR?)
+    [MAR WordSize] MAR?
+    [MBR WordSize] MBR?)
   (define Registers
-    (build-list 16 (λ (i) (Bundle 16))))
+    (build-list RegisterCount (λ (i) (Bundle WordSize))))
   (define the-mic1
     (MIC-1 Microcode
            Registers
