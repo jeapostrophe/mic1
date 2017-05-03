@@ -14,10 +14,12 @@
 
 ;; Core
 (struct wire (value))
-
-(struct Nand (a b o))
 ;; xxx remove and use SR-latch?
 (struct latch (latch? prev next))
+(define (wirelike? w)
+  (or (wire? w) (latch? w)))
+
+(struct nand (a b o))
 
 ;; Constructors
 (define Mt null)
@@ -44,6 +46,14 @@
 (define FALSE (wire (box-immutable #f)))
 (define GROUND (Wire))
 
+(define (Nand a b o)
+  (unless (wirelike? a) (error 'Nand "Expected wire for a, got: ~v" a))
+  (unless (wirelike? b) (error 'Nand "Expected wire for b, got: ~v" b))
+  (unless (wirelike? o) (error 'Nand "Expected wire for o, got: ~v" o))
+  (when (or (eq? o TRUE) (eq? o FALSE)) (error 'Nand "Cannot write to constants"))
+  (when (or (eq? a GROUND) (eq? b GROUND)) (error 'Nand "Cannot read ground"))
+  (nand a b o))
+
 ;; Simulator
 (define bread
   (match-lambda
@@ -57,6 +67,27 @@
      (when (bread latch?)
        (set-box! nb ?))]))
 
+(define (tree-walk n f)
+  (match n
+    [(cons a d)
+     (tree-walk a f)
+     (tree-walk d f)]
+    [(or #f '() (? void?))
+     (void)]
+    [x
+     (f x)]))
+
+(define (simulate! sn)
+  (tree-walk
+   sn
+   (match-lambda
+     [(nand a b o)
+      (bwrite! o (not (and (bread a) (bread b))))]
+     [(latch ? pb nb)
+      (when (bread ?)
+        (set-box! pb (unbox nb)))])))
+
+;; Helpers
 (define (write-number! B n)
   (define len (integer-length n))
   (unless (<= len (length B))
@@ -68,52 +99,79 @@
   (for/fold ([n 0]) ([b (in-list B)] [i (in-naturals)])
     (+ n (* (if (bread b) 1 0) (expt 2 i)))))
 
-(define (tree-walk n f)
-  (match n
-    [(cons a d)
-     (tree-walk a f)
-     (tree-walk d f)]
-    [(or #f '() (? void?))
-     (void)]
-    [x
-     (f x)]))
-
+;; xxx check that every wire is only set once, other than Ground?
+;; xxx general optimizations?
 (define (net-count sn)
   (define C 0)
   (tree-walk sn (λ (_) (set! C (add1 C))))
   C)
 
-(define (simulate! sn)
-  (define ustep
-    (match-lambda
-      [(Nand a b o)
-       (bwrite! o (not (and (bread a) (bread b))))]
-      [(latch ? pb nb)
-       (when (bread ?)
-         (set-box! pb (unbox nb)))]))
-
-  (tree-walk sn ustep))
-
 ;; Exhaustive testing
 (module+ test
-  (define (tt-make-in in)
+  (define (tt-make set? in)
     (cond
-      [(list? in) (map tt-make-in in)]
+      [(list? in)
+       (for/list ([i (in-list in)])
+         (tt-make set? i))]
       [else
        (define w (Wire))
-       (bwrite! w (= 1 in))
+       (when set? (bwrite! w (= 1 in)))
        w]))
+  (define (tt-check-out outw out)
+    (cond
+      [(list? outw) (for-each tt-check-out outw out)]
+      [else
+       (chk (if (bread outw) 1 0) out)]))
   (define (chk-tt f ls)
     (with-chk (['f f])
       (for ([l (in-list ls)])
         (match-define (list ins outs) l)
-        (define inws (tt-make-in ins))
-        (define outws (Bundle (length outs)))
+        (define inws (tt-make #t ins))
+        (define outws (tt-make #f outs))
         (define n (apply f (append inws outws)))
         (simulate! n)
         (with-chk (['ins ins])
-          (chk (map (λ (w) (if (bread w) 1 0)) outws)
-               outs))))))
+          (tt-check-out outws outs))))))
+(module+ test
+  (define-syntax (define-chk-num stx)
+    (syntax-parse stx
+      [(_ the-chk:id
+          #:N N:id
+          #:in (iw:wire-spec ...)
+          #:out (ow:wire-spec ...)
+          #:circuit the-circuit:id
+          #:exhaust MAX-N:expr
+          #:check check-e:expr)
+       (syntax/loc stx
+         (begin
+           (define (the-chk #:N N iw.i ...)
+             (with-chk (['N N]
+                        ['Circuit 'the-circuit]
+                        ['iw.i iw.i] ...)
+               (define-wires ow ...)
+               (define (in-write v w)
+                 (if (list? w)
+                   (write-number! w v)
+                   (bwrite! w v))
+                 w)
+               (define some-net (the-circuit (in-write iw.i iw.d) ... ow.i ...))
+               (simulate! some-net)
+               (define (out-raw w)
+                 (if (list? w) (map bread w) (bread w)))
+               (define (out-read w)
+                 (if (list? w) (read-number w) (bread w)))
+               (with-chk (['ow.i (out-raw ow.i)] ...)
+                 (let ([ow.i (out-read ow.i)] ...)
+                   (with-chk ([(string->symbol (format "read:~a" 'ow.i))
+                               ow.i] ...)
+                     check-e)))))
+
+           (for ([N (in-range 1 MAX-N)])
+             (define MAX-V (expt 2 N))
+             (define (in-iter w)
+               (if (list? w) (in-range MAX-V) (in-list '(#f #t))))
+             (for* ([iw.i (in-iter iw.d)] ...)
+               (the-chk #:N N iw.i ...)))))])))
 
 ;; Functional Units
 (module+ test
@@ -132,6 +190,15 @@
   (chk-tt Not
           '(((0) (1))
             ((1) (0)))))
+
+(define (Not/N A O)
+  (map Not A O))
+(module+ test
+  (define-chk-num chk-not
+    #:N N #:in ([A N]) #:out ([O N])
+    #:circuit Not/N #:exhaust 5
+    #:check
+    (chk O (modulo (bitwise-not A) (expt 2 N)))))
 
 (define (Id a o)
   (Net (t)
@@ -153,6 +220,30 @@
             ((1 0) (0))
             ((1 1) (1)))))
 
+(define (binary->nary Op Unit)
+  (define (nary l)
+    (match l
+      [(list Out) (Id Unit Out)]
+      [(list X Out) (Id X Out)]
+      [(list A B Out) (Op A B Out)]
+      [(list* A B More)
+       (Net (T)
+            (Op A B T)
+            (nary (cons T More)))]))
+  (λ l (nary l)))
+
+(define And* (binary->nary And TRUE))
+(module+ test
+  (chk-tt And*
+          '(((0 0 0) (0))
+            ((0 0 1) (0))
+            ((0 1 0) (0))
+            ((0 1 1) (0))
+            ((1 0 0) (0))
+            ((1 0 1) (0))
+            ((1 1 0) (0))
+            ((1 1 1) (1)))))
+
 (define (Or a b o)
   (Net (na nb)
        (Not a na)
@@ -165,15 +256,7 @@
             ((1 0) (1))
             ((1 1) (1)))))
 
-(define (Or* . l)
-  (match l
-    [(list Out) (Id FALSE Out)]
-    [(list X Out) (Id X Out)]
-    [(list A B Out) (Or A B Out)]
-    [(list* A B More)
-     (Net (T)
-          (Or A B T)
-          (apply Or* T More))]))
+(define Or* (binary->nary Or FALSE))
 (module+ test
   (chk-tt Or*
           '(((0 0 0) (0))
@@ -269,47 +352,6 @@
      ((1 0 1) (1 0))
      ((1 1 0) (1 0))
      ((1 1 1) (1 1)))))
-
-(module+ test
-  (define-syntax (define-chk-num stx)
-    (syntax-parse stx
-      [(_ the-chk:id
-          #:N N:id
-          #:in (iw:wire-spec ...)
-          #:out (ow:wire-spec ...)
-          #:circuit the-circuit:id
-          #:exhaust MAX-N:expr
-          #:check check-e:expr)
-       (syntax/loc stx
-         (begin
-           (define (the-chk #:N N iw.i ...)
-             (with-chk (['N N]
-                        ['Circuit 'the-circuit]
-                        ['iw.i iw.i] ...)
-               (define-wires ow ...)
-               (define (in-write v w)
-                 (if (list? w)
-                   (write-number! w v)
-                   (bwrite! w v))
-                 w)
-               (define some-net (the-circuit (in-write iw.i iw.d) ... ow.i ...))
-               (simulate! some-net)
-               (define (out-raw w)
-                 (if (list? w) (map bread w) (bread w)))
-               (define (out-read w)
-                 (if (list? w) (read-number w) (bread w)))
-               (with-chk (['ow.i (out-raw ow.i)] ...)
-                 (let ([ow.i (out-read ow.i)] ...)
-                   (with-chk ([(string->symbol (format "read:~a" 'ow.i))
-                               ow.i] ...)
-                     check-e)))))
-
-           (for ([N (in-range 1 MAX-N)])
-             (define MAX-V (expt 2 N))
-             (define (in-iter w)
-               (if (list? w) (in-range MAX-V) (in-list '(#f #t))))
-             (for* ([iw.i (in-iter iw.d)] ...)
-               (the-chk #:N N iw.i ...)))))])))
 
 (define (Adder/N A B Cin Cout Sum)
   (define N (length A))
@@ -438,11 +480,19 @@
             (And/wb OnBottom NewOuts fst-Outs)
             (And/wb OnTop NewOuts snd-Outs))])))
 (module+ test
+  (chk-tt
+   Decoder/N
+   '([((0)) ((1 0))]
+     [((1)) ((0 1))]))
+  
   (define-chk-num chk-decoder
     #:N N #:in ([Which N]) #:out ([Outs (expt 2 N)])
     #:circuit Decoder/N #:exhaust 6
     #:check
-    (chk Outs (arithmetic-shift 1 Which))))
+    (chk Outs (arithmetic-shift 1 Which)))
+
+  (chk-decoder #:N 3 #b111)
+  (chk (arithmetic-shift 1 7) 128))
 
 (define (log2 x)
   (define r (/ (log x) (log 2)))
@@ -495,21 +545,115 @@
                      1
                      0))))))
 
+(define (ROM-AddrSpace vals)
+  (integer-length (sub1 (length vals))))
+
+(define (number->wires N n)
+  (for/list ([i (in-range N)])
+    (if (bitwise-bit-set? n i) TRUE FALSE)))
+(module+ test
+  (for* ([N (in-range 1 8)]
+         [n (in-range (expt 2 N))])
+    (chk (read-number (number->wires N n)) n)))
+
+(define (numbers->wires N ns)
+  (map (λ (n) (number->wires N n)) ns))
+
+(define (ROM-1bit ValBits Which ValueBitOut)
+  (unless (= (length ValBits) (length Which))
+    (error 'ROM-1bit "Mismatch of signals and bits"))
+  (Net ([vb*ws (length ValBits)])
+       (for/list ([vb (in-list ValBits)]
+                  [w (in-list Which)]
+                  [vb*w (in-list vb*ws)])
+         ;; If the value bit is set, and this is the value we want,
+         ;; set it to the vb*w
+         (And vb w vb*w))
+       ;; Then or all these together and send the output to ValueBitOut
+       (apply Or* (snoc vb*ws ValueBitOut))))
+(module+ test
+  (chk-tt ROM-1bit
+          '([((0 1) (0 0)) (0)]
+            [((0 1) (1 0)) (0)]
+            [((0 1) (0 1)) (1)]
+
+            [((1 0) (0 0)) (0)]
+            [((1 0) (1 0)) (1)]
+            [((1 0) (0 1)) (0)]
+
+            [((0 0) (0 0)) (0)]
+            [((0 0) (1 0)) (0)]
+            [((0 0) (0 1)) (0)]
+
+            [((1 1) (0 0)) (0)]
+            [((1 1) (1 0)) (1)]
+            [((1 1) (0 1)) (1)])))
+
+(define (ROM vals Addr Value)
+  (define A (ROM-AddrSpace vals))
+  (define W (length Value))
+  (unless (= A (length Addr))
+    (error 'ROM "Addr wrong bits: got ~v, expected ~v" (length Addr) A))
+
+  ;; The ROM is 2^A different values in the `vals` list. First, we
+  ;; decode the address into a signal that says "Get value i".
+  (define-wires [Which (expt 2 A)])
+  (define decode-net (Decoder/N Addr Which))
+
+  ;; Each value in the ROM is W bits long
+  (define val-wires (numbers->wires W vals))
+
+  ;; So, we have a different circuit for each bit of the ROM's output
+  (define set-value-net
+    (for/list ([Value_i (in-list Value)]
+               [i (in-naturals)])
+      (ROM-1bit (map (λ (vw) (list-ref vw i)) val-wires)
+                Which
+                Value_i)))
+
+  ;; We return the composition of these
+  (Net () decode-net set-value-net))
+(module+ test
+  (define test-2rom-vals '(0 1))
+  (chk (ROM-AddrSpace test-2rom-vals) 1)
+  (define (test-2rom Addr Value)
+    (ROM test-2rom-vals Addr Value))
+  (chk-tt test-2rom
+          '([((0)) ((0))]
+            [((1)) ((1))]))
+  
+  (define (chk-rom N vals)
+    (define Addr (Bundle (ROM-AddrSpace vals)))
+    (define Value (Bundle N))
+    (define n (ROM vals Addr Value))
+    (for ([i (in-naturals)]
+          [v (in-list vals)])
+      (write-number! Addr i)
+      (simulate! n)
+      (with-chk (['i i]
+                 ['v v])
+        (chk (read-number Value) v))))
+
+  (for ([N (in-range 1 2)])
+    (with-chk (['N N])
+      (chk-rom
+       N
+       (for/list ([i (in-range (expt 2 N))])
+         i)))))
+
 ;; XXX
-(define ROM void)
 (define RegisterRead void)
 (define Latch void)
 (define ALU void)
 (define RegisterSet void)
 (define Cut/N void)
 
-(define (MIC-1 Microcode
+(define (MIC-1 μCodeLength Microcode
                Registers
                Read? Write?
                MAR MAR?
                MBR MBR?)
-  (define μAddrSpace (integer-length (sub1 (length Microcode))))
-  (define μCodeLength (integer-length (first Microcode)))
+  (define μAddrSpace (ROM-AddrSpace Microcode))
   (define WordBits (length MBR))
   (define RegisterCount (length Registers))
   (define RegisterBits (integer-length (sub1 RegisterCount)))
@@ -579,7 +723,7 @@
   (define Registers
     (build-list RegisterCount (λ (i) (Cells WordSize))))
   (define the-mic1
-    (MIC-1 Microcode
+    (MIC-1 32 Microcode
            Registers
            Read? Write?
            MAR MAR?
