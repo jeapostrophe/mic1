@@ -1,10 +1,13 @@
 #lang racket/base
 (require racket/match
+         racket/list
          syntax/parse/define
          (for-syntax racket/base
                      syntax/parse))
 (module+ test
-  (require chk))
+  (require chk
+           (for-syntax racket/base
+                       syntax/parse)))
 
 ;; Lib
 (define (snoc l x) (append l (list x)))
@@ -13,9 +16,9 @@
 (struct wire (value))
 
 (struct Nand (a b o))
-;; xxx remove
+;; xxx remove and use SR-latch?
 (struct latch (latch? prev next))
-;; xxx remove
+;; xxx remove and use cell with a cycle and increment?
 (struct clock (i os))
 
 ;; Constructors
@@ -69,18 +72,22 @@
   (for/fold ([n 0]) ([b (in-list B)] [i (in-naturals)])
     (+ n (* (if (bread b) 1 0) (expt 2 i)))))
 
-(define (simulate! sn)
-  (define (tree-walk n f)
-    (match n
-      [(cons a d)
-       (+ (tree-walk a f)
-          (tree-walk d f))]
-      [(or #f '() (? void?))
-       0]
-      [x
-       (f x)
-       1]))
+(define (tree-walk n f)
+  (match n
+    [(cons a d)
+     (tree-walk a f)
+     (tree-walk d f)]
+    [(or #f '() (? void?))
+     (void)]
+    [x
+     (f x)]))
 
+(define (net-count sn)
+  (define C 0)
+  (tree-walk sn (λ (_) (set! C (add1 C))))
+  C)
+
+(define (simulate! sn)
   (define ustep
     (match-lambda
       [(Nand a b o)
@@ -97,6 +104,7 @@
 
   (tree-walk sn ustep))
 
+;; Exhaustive testing
 (module+ test
   (define (chk-tt f ls)
     (with-chk (['f f])
@@ -120,6 +128,10 @@
             ((0 1) (1))
             ((1 0) (1))
             ((1 1) (0)))))
+
+;; xxx test clock
+;; xxx test latch
+;; xxx test cell
 
 (define (Not a o)
   (Nand a a o))
@@ -195,22 +207,36 @@
             ((1 0) (0))
             ((1 1) (1)))))
 
+;; o = (if s b a)
 (define (Mux a b s o)
   (Net (as bs ns)
        (Not s ns)
        (And a ns as)
        (And b s bs)
        (Or as bs o)))
-;; XXX
+(module+ test
+  (chk-tt Mux
+          '(((0   0   0) (0))
+            ((0   1   0) (0))
+            ((1   0   0) (1))
+            ((1   1   0) (1))
+            ((0   0   1) (0))
+            ((0   1   1) (1))
+            ((1   0   1) (0))
+            ((1   1   1) (1)))))
 
 (define (Demux i s a b)
-  (Net (ns na nb)
+  (Net (ns)
        (Not s ns)
-       (Nand i ns na)
-       (Not na a)
-       (Nand s i)
-       (Not nb b)))
-;; XXX
+       (And i ns a)
+       (And s i b)))
+(module+ test
+  (chk-tt Demux
+          (for*/list ([i (in-range 2)] [s (in-range 2)])
+            (list (list i s)
+                  (if (= s 0)
+                    (list i 0)
+                    (list 0 i))))))
 
 (define (Full-Adder a b cin cout sum)
   (Net (axb ab ct)
@@ -231,83 +257,73 @@
      ((1 1 0) (1 0))
      ((1 1 1) (1 1)))))
 
-(define (Double-Adder A0 A1 B0 B1 Cin Cout Sum0 Sum1)
-  (Net (C0)
-       (Full-Adder A0 B0 Cin C0 Sum0)
-       (Full-Adder A1 B1 C0 Cout Sum1)))
 (module+ test
-  (chk-tt
-   Double-Adder
-   '(((0 0 0 0 0) (0 0 0)) ;; 0 + 0 = 0
+  (define-syntax (define-chk-num stx)
+    (syntax-parse stx
+      [(_ the-chk:id
+          #:N N:id
+          #:in (iw:wire-spec ...)
+          #:out (ow:wire-spec ...)
+          #:circuit the-circuit:id
+          #:exhaust MAX-N:expr
+          #:check check-e:expr)
+       (syntax/loc stx
+         (begin
+           (define (the-chk #:N N iw.i ...)
+             (with-chk (['Circuit 'the-circuit]
+                        ['iw.i iw.i] ...)
+               (define-wires ow ...)
+               (define (in-write v w)
+                 (if (list? w)
+                   (write-number! w v)
+                   (bwrite! w v))
+                 w)
+               (define some-net (the-circuit (in-write iw.i iw.d) ... ow.i ...))
+               (simulate! some-net)
+               (define (out-raw w)
+                 (if (list? w) (map bread w) (bread w)))
+               (define (out-read w)
+                 (if (list? w) (read-number w) (bread w)))
+               (with-chk (['ow.i (out-raw ow.i)] ...)
+                 (let ([ow.i (out-read ow.i)] ...)
+                   (with-chk ([(string->symbol (format "read:~a" 'ow.i))
+                               ow.i] ...)
+                     check-e)))))
 
-     ((1 0 0 0 0) (0 1 0)) ;; 1 + 0 = 1
-     ((0 0 1 0 0) (0 1 0)) ;; 0 + 1 = 1
-     ((1 0 1 0 0) (0 0 1)) ;; 1 + 1 = 2
+           (for ([N (in-range 1 MAX-N)])
+             (define MAX-V (expt 2 N))
+             (define (in-iter w)
+               (if (list? w) (in-range MAX-V) (in-list '(#f #t))))
+             (for* ([iw.i (in-iter iw.d)] ...)
+               (the-chk #:N N iw.i ...)))))])))
 
-     ((0 1 0 0 0) (0 0 1)) ;; 2 + 0 = 2
-     ((0 0 0 1 0) (0 0 1)) ;; 0 + 2 = 2
-     ((0 1 1 0 0) (0 1 1)) ;; 2 + 1 = 3
-     ((1 0 0 1 0) (0 1 1)) ;; 1 + 2 = 3
-     ((0 1 0 1 0) (1 0 0)) ;; 2 + 2 = 4
-
-     ((1 1 0 0 0) (0 1 1)) ;; 3 + 0 = 3
-     ((1 1 1 0 0) (1 0 0)) ;; 3 + 1 = 4
-     ((1 1 0 1 0) (1 1 0)) ;; 3 + 2 = 5
-     ((1 1 1 1 0) (1 0 1)) ;; 3 + 3 = 6
-     ((0 0 1 1 0) (0 1 1)) ;; 0 + 3 = 3
-     ((1 0 1 1 0) (1 0 0)) ;; 1 + 3 = 4
-     ((0 1 1 1 0) (1 1 0)) ;; 2 + 3 = 5
-     )))
-
-(define (Adder A B Cin Cout Sum)
+(define (Adder/N A B Cin Cout Sum)
   (define N (length A))
-  (unless (and (= N (length B))
-               (= N (length Sum)))
-    (error 'Adder "A ≠ B ≠ Sum"))
+  (when (zero? N) (error 'Adder/N "Cannot add to 0 bits"))
+  (unless (= N (length B) (length Sum))
+    (error 'Adder/N "sizes mismatch"))
   (define Cs (Bundle (sub1 N)))
   (define Cins (cons Cin Cs))
   (define Couts (snoc Cs Cout))
-  (for/fold ([prev-Net Mt])
-            ([a (in-list A)]
-             [b (in-list B)]
-             [cin (in-list Cins)]
-             [cout (in-list Couts)]
-             [s (in-list Sum)]
-             [i (in-naturals)])
-    (Net ()
-         prev-Net
-         (Full-Adder a b cin cout s))))
+  (map Full-Adder A B Cins Couts Sum))
 (module+ test
-  (define (chk-adder a b #:N [GN #f])
-    (define N (or GN (max (integer-length a) (integer-length b))))
-    (with-chk (['a a]
-               ['b b]
-               ['N N])
-      (define-wires [A N] [B N] Cin [Sum N] Cout)
-      (write-number! A a)
-      (write-number! B b)
-      (define some-net (Adder A B Cin Cout Sum))
-      (simulate! some-net)
-      (with-chk (['Sum (map bread Sum)])
-        (chk (cons (read-number Sum)
-                   (bread Cout))
-             (cons (modulo (+ a b) (expt 2 N))
-                   (> (+ a b) (sub1 (expt 2 N))))))))
+  (define-chk-num chk-adder
+    #:N N #:in ([A N] [B N] Cin) #:out (Cout [Sum N])
+    #:circuit Adder/N #:exhaust 5
+    #:check
+    (chk (cons Sum Cout)
+         (cons (modulo (+ A B (if Cin 1 0)) (expt 2 N))
+               (> (+ A B (if Cin 1 0)) (sub1 (expt 2 N))))))
 
+  (chk-adder #:N 16 4011 777 #f))
 
-  (for ([N (in-range 5)])
-    (define MAX (expt 2 N))
-    (for* ([a (in-range MAX)] [b (in-range MAX)])
-      (chk-adder a b #:N N)))
-
-  (chk-adder 4011 777))
-
-(define (Dupe src dst)
-  (cond
-    [(and (wire? src) (wire? dst))
-     (Id src dst)]
-    [else
-     (map Dupe src dst)]))
+(define (Dupe/N src dst)
+  (map Id src dst))
+(module+ test
+  (define-chk-num chk-dupe
+    #:N N #:in ([Src N]) #:out ([Dst N])
+    #:circuit Dupe/N #:exhaust 5
+    #:check (chk Dst Src)))
 
 (define (Half-Adder A B C S)
   (Net ()
@@ -321,46 +337,67 @@
      ((0    1)  (0  1))
      ((1    1)  (1  0)))))
 
-(define (Increment A Cout Inc)
+(define (Increment/N A Cout Inc)
   (define N (length A))
+  (when (zero? N)
+    (error 'Increment/N "Cannot increment 0 bits"))
   (unless (= N (length Inc))
-    (error 'Increment "Output is not same length as input"))
+    (error 'Increment/N "Output is not same length as input"))
   (define-wires [Cs (sub1 N)])
   (define B (cons TRUE Cs))
   (define C (snoc Cs Cout))
-  (for/fold ([nt Mt])
-            ([a (in-list A)]
-             [b (in-list B)]
-             [c (in-list C)]
-             [i (in-list Inc)])
-    (Net () nt (Half-Adder a b c i))))
+  (map Half-Adder A B C Inc))
 (module+ test
-  (define (chk-increment a #:N [GN #f])
-    (define N (or GN (integer-length a)))
-    (with-chk (['a a]
-               ['N N])
-      (define-wires [A N] [Inc N] Cout)
-      (write-number! A a)
-      (define some-net (Increment A Cout Inc))
-      (simulate! some-net)
-      (with-chk (['Inc (map bread Inc)])
-        (chk (cons (read-number Inc)
-                   (bread Cout))
-             (cons (modulo (+ a 1) (expt 2 N))
-                   (> (+ a 1) (sub1 (expt 2 N))))))))
+  (define-chk-num chk-increment
+    #:N N #:in ([A N]) #:out (Cout [Inc N])
+    #:circuit Increment/N #:exhaust 5
+    #:check
+    (chk (cons Inc Cout)
+         (cons (modulo (+ A 1) (expt 2 N))
+               (> (+ A 1) (sub1 (expt 2 N)))))))
 
-  (for ([N (in-range 1 5)])
-    (define MAX (expt 2 N))
-    (for* ([a (in-range MAX)])
-      (chk-increment a #:N N))))
+(define (Shifter Left? Right? L Z R O)
+  (Net (Z-or-L)
+       (Mux Z L Left? Z-or-L)
+       (Mux Z-or-L R Right? O)))
+(module+ test
+  (chk-tt Shifter
+          (for*/list ([L? (in-range 2)] [R? (in-range 2)]
+                      [L (in-range 2)] [Z (in-range 2)] [R (in-range 2)])
+            (list (list L? R? L Z R)
+                  (list (cond [(= 1 R?) R]
+                              [(= 1 L?) L]
+                              [else Z]))))))
+
+(define (Shifter/N Left? Right? In Out)
+  (define N (length In))
+  (unless (= N (length Out))
+    (error 'Shifter/N "In/Out do not match in length"))
+  (define (tser l) (reverse (rest (reverse l))))
+  (define Lefts (cons FALSE (tser In)))
+  (define Rights (snoc (rest In) FALSE))
+  (map (λ (l i r o) (Shifter Left? Right? l i r o))
+       Lefts In Rights Out))
+(module+ test
+  (define-chk-num chk-shifter
+    #:N N #:in (Left? Right? [In N]) #:out ([Out N])
+    #:circuit Shifter/N #:exhaust 5
+    #:check
+    (chk Out
+         (modulo (arithmetic-shift In
+                                   (cond [Right? -1]
+                                         [Left? +1] 
+                                         [else 0]))
+                 (expt 2 N)))))
 
 ;; XXX
+(define Decoder void)
+(define Encoder void)
 (define ControlStore void)
 (define RegisterDecoder void)
 (define Latch void)
 (define ALU void)
 (define MicroSeqLogic void)
-(define Shifter void)
 (define RegisterSet void)
 
 (define (MIC-1 Microcode
@@ -379,7 +416,7 @@
   (define MIR:WR Write?)
   (define C-Bus MBR)
   (define Shifter-out C-Bus)
-  (Net (#;_
+  (Net (GROUND
         Clock:1 Clock:2 Clock:3 Clock:4
         N Z MicroSeqLogic-out
         MIR:AMUX [MIR:COND 2] [MIR:ALU 2] [MIR:SH 2]
@@ -393,7 +430,8 @@
 
         [A-Bus WordBits] [B-Bus WordBits] [C-Bus WordBits]
         [A-latch-out WordBits]
-        [Amux-out WordBits] [ALU-out WordBits] [Shifter-out WordBits])
+        [Amux-out WordBits] [ALU-out WordBits]
+        Shifter-Left? Shifter-Right? [Shifter-out WordBits])
 
        (Clock Clock:1 Clock:2 Clock:3 Clock:4)
        (ControlStore Microcode
@@ -409,11 +447,12 @@
        (ALU Amux-out B-Bus MIR:ALU ALU-out N Z)
        (MicroSeqLogic N Z MIR:COND MicroSeqLogic-out)
        (Mux MicroSeqLogic-out MPC-Inc-out MIR:ADDR Mmux-out)
-       (Shifter ALU-out MIR:SH Shifter-out)
+       (Decoder MIR:SH (list GROUND Shifter-Right? Shifter-Left? GROUND))
+       (Shifter/N Shifter-Left? Shifter-Right? ALU-out Shifter-out)
        (RegisterDecoder Clock:4 MIR:C MIR:ENC Csel)
        (RegisterSet Registers Clock:4 C-Bus Csel Asel Bsel A-Bus B-Bus)
        (Latch Clock:4 Mmux-out MPC-out)
-       (Increment MPC-out MPC-Inc-carry MPC-Inc-out)
+       (Increment/N MPC-out MPC-Inc-carry MPC-Inc-out)
 
        (And MIR:MAR Clock:3 MAR?)
        (And MIR:MBR Clock:4 MBR?)))
@@ -421,16 +460,21 @@
 (module+ main
   (define Microcode
     ;; XXX
-    (vector))
+    (vector 0))
   (define-wires
     Read? Write?
     [MAR 16] MAR?
     [MBR 16] MBR?)
   (define Registers
     (build-list 16 (λ (i) (Bundle 16))))
-  ;; XXX
-  (MIC-1 Microcode
-         Registers
-         Read? Write?
-         MAR MAR?
-         MBR MBR?))
+  (define the-mic1
+    (MIC-1 Microcode
+           Registers
+           Read? Write?
+           MAR MAR?
+           MBR MBR?))
+  (format "MIC-1 has ~a NAND gates"
+          (net-count the-mic1))
+  ;; XXX do something with the-mic1
+
+  )
