@@ -17,6 +17,7 @@
   #:methods gen:custom-write
   [(define (write-proc w p m)
      (fprintf p "#<wire: ~a>" (wire-debug w)))])
+
 ;; xxx remove and use SR-latch?
 (struct latch (latch? prev next))
 (define (wirelike? w)
@@ -39,8 +40,6 @@
   (let ()
     (define-wires w ...)
     (list b ...)))
-(define (Cell) (latch TRUE (box #f) (box #f)))
-(define (Cells n) (build-list n (λ (i) (Cell))))
 
 (define (Wire #:debug [d (gensym)])
   (wire d (box #f)))
@@ -92,9 +91,12 @@
       (when (bread ?)
         (set-box! pb (unbox nb)))])))
 
-;; xxx compile to C (or LLVM assembly)
-
 ;; Helpers
+(define (bwriten! b n)
+  (bwrite! b (= n 1)))
+(define (breadn b)
+  (if (bread b) 1 0))
+
 (define (write-number! B n)
   (define len (integer-length n))
   (unless (<= len (length B))
@@ -104,9 +106,16 @@
     (bwrite! b (bitwise-bit-set? n i))))
 (define (read-number B)
   (for/fold ([n 0]) ([b (in-list B)] [i (in-naturals)])
-    (+ n (* (if (bread b) 1 0) (expt 2 i)))))
+    (+ n (* (breadn b) (expt 2 i)))))
 
-;; xxx general optimizations?
+;; Analysis
+
+;; xxx compile to C (or LLVM assembly)
+
+;; xxx perform optimzations on the network? remove not not? remove
+;; duplication? represent an output wire as the nand and hash-cons
+;; those? iterate to fix-point?
+
 (define (net-count sn)
   (define C 0)
   (define WC (make-hasheq))
@@ -127,7 +136,7 @@
         #:unless (eq? w GROUND)
         #:when (> c 1))
     (eprintf "~a wire set more than once.\n" w))
-  
+
   (values C (hash-count WC)))
 
 ;; Exhaustive testing
@@ -137,15 +146,19 @@
       [(list? in)
        (for/list ([i (in-list in)])
          (tt-make set? i))]
-      [else
+      [(number? in)
        (define w (Wire))
-       (when set? (bwrite! w (= 1 in)))
-       w]))
+       (when set? (bwriten! w in))
+       w]
+      [else
+       in]))
   (define (tt-check-out outw out)
     (cond
       [(list? outw) (for-each tt-check-out outw out)]
+      [(number? out)
+       (chk (if (bread outw) 1 0) out)]
       [else
-       (chk (if (bread outw) 1 0) out)]))
+       (void)]))
   (define (chk-tt f ls)
     (with-chk (['f f])
       (for ([l (in-list ls)])
@@ -205,36 +218,41 @@
             ((1 0) (1))
             ((1 1) (0)))))
 
-;; xxx test latch
-(define (Latch Signal In Out)
-  (define l (latch Signal (box #f) (box #f)))
+(define (Latch sig in out)
+  (define l (latch sig (box #f) (box #f)))
   (Net ()
+       (Id in l)
        l
-       (Id In l)
-       (Id l Out)))
+       (Id l out)))
 (module+ test
-  (let ()
-    (define-wires Signal In Out)
-    (define c (Latch Signal In Out))
-    ;; xxx
-    #;(simulate&chk
-     c (list Signal In Out)
-     ;; xxx
-     '([(0 0 0) (0 0 0)]))
-    42))
+  (define (simulate&chk c ws seq)
+    (for ([cmd (in-list seq)]
+          [i (in-naturals)])
+      (with-chk (['cmd cmd]
+                 ['cmd-i i])
+        (match-define (list before msg after) cmd)
+        (with-chk (['cmd-state 'before])
+          (chk (map breadn ws) before))
+        (for-each (λ (w m) (unless (eq? m '_)
+                             (bwriten! w m)))
+                  ws msg)
+        (simulate! c)
+        (with-chk (['cmd-state 'after])
+          (chk (map breadn ws) after)))))
 
-(module+ test
   (let ()
-    (define c (Cell))
-    (chk (bread c) #f)
-    (simulate! c)
-    (chk (bread c) #f)
-    (bwrite! c #t)
-    (chk (bread c) #f)
-    (simulate! c)
-    (chk (bread c) #t)
-    (simulate! c)
-    (chk (bread c) #t)))
+    (define-wires sig in out)
+    (define c (Latch sig in out))
+    (simulate&chk
+     c (list sig in out)
+     '([(0 0 0) (0 1 _) (0 1 0)]
+       [(0 1 0) (1 1 _) (1 1 1)]
+       [(1 1 1) (0 0 _) (0 0 1)]
+       [(0 0 1) (0 1 _) (0 1 1)]
+       [(0 1 1) (1 0 _) (1 0 0)]))))
+
+(define (Latch/N signal In Out)
+  (map (λ (i o) (Latch signal i o)) In Out))
 
 (define (Not a o)
   (Nand a a o))
@@ -533,7 +551,9 @@
       [else
        ;; NOTE It might be possible to do this more efficient with the
        ;; recursion removing half of the bits to decode each time, but
-       ;; I'm not sure how to generalize it.
+       ;; I'm not sure how to generalize it like that. When I look up
+       ;; decoder circuits in the literature, they seem to do this,
+       ;; but I can't see what the pattern is.
        (define next-N (sub1 N))
        (define next-2N (expt 2 next-N))
        (define-values (fst-Outs snd-Outs) (split-at Outs next-2N))
@@ -566,16 +586,16 @@
     (define x (expt 2 i))
     (chk (log2 x) i
          (log2 (add1 x)) #f)))
+
 (define (Clock Os)
   (define 2N (length Os))
   (define N (log2 2N))
   (unless (and N (> N 0))
     (error 'Clock "Must receive 2^n, n>0 output signals"))
-  (define Code (Cells N))
-  (Net ()
-       Code
-       (Increment/N Code GROUND Code)
-       (Decoder/N Code Os)))
+  (Net ([CodeIn N] [CodeOut N])
+       (Decoder/N CodeIn Os)
+       (Increment/N CodeOut GROUND CodeIn)
+       (Latch/N TRUE CodeIn CodeOut)))
 (module+ test
   (define (chk-clock N)
     (with-chk (['N N])
@@ -611,48 +631,39 @@
 (define (ROM-AddrSpace vals)
   (integer-length (sub1 (length vals))))
 
-(define (number->wires N n)
+(define (number->bits N n)
   (for/list ([i (in-range N)])
-    (if (bitwise-bit-set? n i) TRUE FALSE)))
-(module+ test
-  (for* ([N (in-range 1 8)]
-         [n (in-range (expt 2 N))])
-    (chk (read-number (number->wires N n)) n)))
+    (bitwise-bit-set? n i)))
+(define (numbers->bits N ns)
+  (map (λ (n) (number->bits N n)) ns))
 
-(define (numbers->wires N ns)
-  (map (λ (n) (number->wires N n)) ns))
-
-(define (ROM-1bit ValBits Which ValueBitOut)
-  (unless (= (length ValBits) (length Which))
+(define (ROM-1bit value-bits Which ValueBitOut)
+  (unless (= (length value-bits) (length Which))
     (error 'ROM-1bit "Mismatch of signals and bits"))
-  (Net ([vb*ws (length ValBits)])
-       (for/list ([vb (in-list ValBits)]
-                  [w (in-list Which)]
-                  [vb*w (in-list vb*ws)])
-         ;; If the value bit is set, and this is the value we want,
-         ;; set it to the vb*w
-         (And vb w vb*w))
-       ;; Then or all these together and send the output to ValueBitOut
-       (apply Or* (snoc vb*ws ValueBitOut))))
+  ;; If the value bit is #t, then connect it to the output or
+  (apply Or* (snoc (for/list ([vb (in-list value-bits)]
+                              [w (in-list Which)]
+                              #:when vb)
+                     w)
+                   ValueBitOut)))
 (module+ test
   (chk-tt ROM-1bit
-          '([((0 1) (0 0)) (0)]
-            [((0 1) (1 0)) (0)]
-            [((0 1) (0 1)) (1)]
+          '([((#f #t) (0 0)) (0)]
+            [((#f #t) (1 0)) (0)]
+            [((#f #t) (0 1)) (1)]
 
-            [((1 0) (0 0)) (0)]
-            [((1 0) (1 0)) (1)]
-            [((1 0) (0 1)) (0)]
+            [((#t #f) (0 0)) (0)]
+            [((#t #f) (1 0)) (1)]
+            [((#t #f) (0 1)) (0)]
 
-            [((0 0) (0 0)) (0)]
-            [((0 0) (1 0)) (0)]
-            [((0 0) (0 1)) (0)]
+            [((#f #f) (0 0)) (0)]
+            [((#f #f) (1 0)) (0)]
+            [((#f #f) (0 1)) (0)]
 
-            [((1 1) (0 0)) (0)]
-            [((1 1) (1 0)) (1)]
-            [((1 1) (0 1)) (1)])))
+            [((#t #t) (0 0)) (0)]
+            [((#t #t) (1 0)) (1)]
+            [((#t #t) (0 1)) (1)])))
 
-;; XXX This is really inefficient, it has almost 42k wires and gates
 (define (ROM vals Addr Value)
   (define A (ROM-AddrSpace vals))
   (define W (length Value))
@@ -665,13 +676,13 @@
   (define decode-net (Decoder/N Addr Which))
 
   ;; Each value in the ROM is W bits long
-  (define val-wires (numbers->wires W vals))
+  (define val-bits (numbers->bits W vals))
 
   ;; So, we have a different circuit for each bit of the ROM's output
   (define set-value-net
     (for/list ([Value_i (in-list Value)]
                [i (in-naturals)])
-      (ROM-1bit (map (λ (vw) (list-ref vw i)) val-wires)
+      (ROM-1bit (map (λ (vw) (list-ref vw i)) val-bits)
                 Which
                 Value_i)))
 
@@ -721,7 +732,6 @@
              (((0 1) 0 (1 1 0) 0 1))])))
 
 ;; XXX
-(define Latch/N void)
 (define ALU void)
 (define RegisterRead void)
 (define RegisterSet void)
@@ -791,13 +801,14 @@
 (module+ main
   (define WordSize 16)
   (define RegisterCount 16)
+  ;; xxx load microcode from file
   (define Microcode (make-list 256 0))
   (define-wires
     Read? Write?
     [MAR WordSize] MAR?
     [MBR WordSize] MBR?)
   (define Registers
-    (build-list RegisterCount (λ (i) (Cells WordSize))))
+    (build-list RegisterCount (λ (i) (Bundle WordSize))))
   (define the-mic1
     (MIC-1 32 Microcode
            Registers
