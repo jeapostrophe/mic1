@@ -92,6 +92,8 @@
       (when (bread ?)
         (set-box! pb (unbox nb)))])))
 
+;; xxx compile to C (or LLVM assembly)
+
 ;; Helpers
 (define (write-number! B n)
   (define len (integer-length n))
@@ -325,6 +327,17 @@
             ((0   1   1) (1))
             ((1   0   1) (0))
             ((1   1   1) (1)))))
+
+(define (Mux/N A B s O)
+  (map (λ (a b o) (Mux a b s o))
+       A B O))
+(module+ test
+  (chk-tt Mux/N
+          '((((0) (1) 0) ((0)))
+            (((0) (1) 1) ((1)))
+
+            (((0 0) (1 1) 0) ((0 0)))
+            (((0 0) (1 1) 1) ((1 1))))))
 
 (define (Demux i s a b)
   (Net (ns)
@@ -662,11 +675,10 @@
              (((0 1) 0 (1 1 0) 0 1))])))
 
 ;; XXX
-(define RegisterRead void)
 (define Latch void)
 (define ALU void)
+(define RegisterRead void)
 (define RegisterSet void)
-(define Mux/N void)
 
 (define (MIC-1 μCodeLength Microcode
                Registers
@@ -716,10 +728,10 @@
        (RegisterRead Registers Bsel B-Bus)
        (Latch Clock:2 A-Bus A-latch-out)
        (Latch Clock:2 B-Bus B-latch-out)
-       (Mux/N MIR:AMUX MBR A-latch-out Amux-out)
+       (Mux/N MBR A-latch-out MIR:AMUX Amux-out)
        (ALU Amux-out B-Bus MIR:ALU ALU-out N Z)
        (MicroSeqLogic N Z MIR:COND MicroSeqLogic-out)
-       (Mux/N MicroSeqLogic-out MPC-Inc-out MIR:ADDR Mmux-out)
+       (Mux/N MPC-Inc-out MIR:ADDR MicroSeqLogic-out Mmux-out)
        (Decoder/N MIR:SH (list GROUND Shifter-Right? Shifter-Left? GROUND))
        (Shifter/N Shifter-Left? Shifter-Right? ALU-out Shifter-out)
        (And Clock:4 MIR:ENC Write-C?)
