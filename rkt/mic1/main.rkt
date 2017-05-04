@@ -106,12 +106,29 @@
   (for/fold ([n 0]) ([b (in-list B)] [i (in-naturals)])
     (+ n (* (if (bread b) 1 0) (expt 2 i)))))
 
-;; xxx check that every wire is only set once, other than Ground?
 ;; xxx general optimizations?
 (define (net-count sn)
   (define C 0)
-  (tree-walk sn (λ (_) (set! C (add1 C))))
-  C)
+  (define WC (make-hasheq))
+  (define SET (make-hasheq))
+  (tree-walk
+   sn
+   (λ (g)
+     (match g
+       [(nand a b o)
+        (set! C (add1 C))
+        (for ([x (in-list (list a b o))])
+          (hash-update! WC x add1 0))
+        (hash-update! SET o add1 0)]
+       [(latch _ _ _)
+        (hash-update! WC g add1 0)])))
+
+  (for ([(w c) (in-hash SET)]
+        #:unless (eq? w GROUND)
+        #:when (> c 1))
+    (eprintf "~a wire set more than once.\n" w))
+  
+  (values C (hash-count WC)))
 
 ;; Exhaustive testing
 (module+ test
@@ -502,7 +519,7 @@
    Decoder/N
    '([((0)) ((1 0))]
      [((1)) ((0 1))]))
-  
+
   (define-chk-num chk-decoder
     #:N N #:in ([Which N]) #:out ([Outs (expt 2 N)])
     #:circuit Decoder/N #:exhaust 6
@@ -639,7 +656,7 @@
   (chk-tt test-2rom
           '([((0)) ((0))]
             [((1)) ((1))]))
-  
+
   (define (chk-rom N vals)
     (define-wires
       [Addr (ROM-AddrSpace vals)]
@@ -758,8 +775,9 @@
            Read? Write?
            MAR MAR?
            MBR MBR?))
-  (format "MIC-1 has ~a NAND gates"
-          (net-count the-mic1))
+  (define-values (G W) (net-count the-mic1))
+  (format "MIC-1 has ~a NAND gates and ~a wires"
+          G W)
   ;; XXX do something with the-mic1
 
   )
