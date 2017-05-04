@@ -18,11 +18,6 @@
   [(define (write-proc w p m)
      (fprintf p "#<wire: ~a>" (wire-debug w)))])
 
-;; xxx remove and use SR-latch?
-(struct latch (latch? prev next))
-(define (wirelike? w)
-  (or (wire? w) (latch? w)))
-
 (struct nand (a b o))
 
 ;; Constructors
@@ -51,25 +46,20 @@
 (define GROUND (Wire #:debug 'GROUND))
 
 (define (Nand a b o)
-  (unless (wirelike? a) (error 'Nand "Expected wire for a, got: ~v" a))
-  (unless (wirelike? b) (error 'Nand "Expected wire for b, got: ~v" b))
-  (unless (wirelike? o) (error 'Nand "Expected wire for o, got: ~v" o))
+  (unless (wire? a) (error 'Nand "Expected wire for a, got: ~v" a))
+  (unless (wire? b) (error 'Nand "Expected wire for b, got: ~v" b))
+  (unless (wire? o) (error 'Nand "Expected wire for o, got: ~v" o))
   (when (or (eq? o TRUE) (eq? o FALSE)) (error 'Nand "Cannot write to constants"))
   (when (or (eq? a GROUND) (eq? b GROUND)) (error 'Nand "Cannot read ground"))
   (nand a b o))
 
 ;; Simulator
-(define bread
-  (match-lambda
-    [(wire _ vb) (unbox vb)]
-    [(latch _ pb n) (unbox pb)]))
+(define (bread b)
+  (match-define (wire _ vb) b)
+  (unbox vb))
 (define (bwrite! b ?)
-  (match b
-    [(wire _ vb)
-     (set-box! vb ?)]
-    [(latch latch? _ nb)
-     (when (bread latch?)
-       (set-box! nb ?))]))
+  (match-define (wire _ vb) b)
+  (set-box! vb ?))
 
 (define (tree-walk n f)
   (match n
@@ -86,10 +76,7 @@
    sn
    (match-lambda
      [(nand a b o)
-      (bwrite! o (not (and (bread a) (bread b))))]
-     [(latch ? pb nb)
-      (when (bread ?)
-        (set-box! pb (unbox nb)))])))
+      (bwrite! o (not (and (bread a) (bread b))))])))
 
 ;; Helpers
 (define (bwriten! b n)
@@ -122,15 +109,12 @@
   (define SET (make-hasheq))
   (tree-walk
    sn
-   (λ (g)
-     (match g
-       [(nand a b o)
-        (set! C (add1 C))
-        (for ([x (in-list (list a b o))])
-          (hash-update! WC x add1 0))
-        (hash-update! SET o add1 0)]
-       [(latch _ _ _)
-        (hash-update! WC g add1 0)])))
+   (match-lambda
+     [(nand a b o)
+      (set! C (add1 C))
+      (for ([x (in-list (list a b o))])
+        (hash-update! WC x add1 0))
+      (hash-update! SET o add1 0)]))
 
   (for ([(w c) (in-hash SET)]
         #:unless (eq? w GROUND)
@@ -218,12 +202,16 @@
             ((1 0) (1))
             ((1 1) (0)))))
 
-(define (Latch sig in out)
-  (define l (latch sig (box #f) (box #f)))
-  (Net ()
-       (Id in l)
-       l
-       (Id l out)))
+(define (Gated-D-Latch Clk D Q)
+  ;; http://ecse.bd.psu.edu/cse271/memelem.pdf
+  (define S D)
+  (Net (R Top Bot NQ)
+       (Not D R)
+       (Nand S Clk Top)
+       (Nand Clk R Bot)
+       (Nand Q Bot NQ)
+       (Nand Top NQ Q)))
+(define Latch Gated-D-Latch)
 (module+ test
   (define (simulate&chk c ws seq)
     (for ([cmd (in-list seq)]
