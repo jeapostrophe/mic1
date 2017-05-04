@@ -13,7 +13,10 @@
 (define (snoc l x) (append l (list x)))
 
 ;; Core
-(struct wire (value))
+(struct wire (debug value)
+  #:methods gen:custom-write
+  [(define (write-proc w p m)
+     (fprintf p "#<wire: ~a>" (wire-debug w)))])
 ;; xxx remove and use SR-latch?
 (struct latch (latch? prev next))
 (define (wirelike? w)
@@ -27,9 +30,9 @@
   (define-syntax-class wire-spec
     #:attributes (i d)
     (pattern i:id
-             #:attr d (syntax/loc #'i (Wire)))
+             #:attr d (syntax/loc #'i (Wire #:debug 'i)))
     (pattern [i:id n:expr]
-             #:attr d (syntax/loc #'i (Bundle n)))))
+             #:attr d (syntax/loc #'i (Bundle #:debug 'i n)))))
 (define-simple-macro (define-wires w:wire-spec ...)
   (begin (define w.i w.d) ...))
 (define-simple-macro (Net (w:wire-spec ...) b ...)
@@ -39,12 +42,14 @@
 (define (Cell) (latch TRUE (box #f) (box #f)))
 (define (Cells n) (build-list n (λ (i) (Cell))))
 
-(define (Wire) (wire (box #f)))
-(define (Bundle n) (build-list n (λ (i) (Wire))))
+(define (Wire #:debug [d (gensym)])
+  (wire d (box #f)))
+(define (Bundle #:debug [d (gensym)] n)
+  (build-list n (λ (i) (Wire #:debug (cons d i)))))
 
-(define TRUE (wire (box-immutable #t)))
-(define FALSE (wire (box-immutable #f)))
-(define GROUND (Wire))
+(define TRUE (wire 'TRUE (box-immutable #t)))
+(define FALSE (wire 'FALSE (box-immutable #f)))
+(define GROUND (Wire #:debug 'GROUND))
 
 (define (Nand a b o)
   (unless (wirelike? a) (error 'Nand "Expected wire for a, got: ~v" a))
@@ -57,11 +62,11 @@
 ;; Simulator
 (define bread
   (match-lambda
-    [(wire vb) (unbox vb)]
+    [(wire _ vb) (unbox vb)]
     [(latch _ pb n) (unbox pb)]))
 (define (bwrite! b ?)
   (match b
-    [(wire vb)
+    [(wire _ vb)
      (set-box! vb ?)]
     [(latch latch? _ nb)
      (when (bread latch?)
@@ -358,7 +363,7 @@
   (when (zero? N) (error 'Adder/N "Cannot add to 0 bits"))
   (unless (= N (length B) (length Sum))
     (error 'Adder/N "sizes mismatch"))
-  (define Cs (Bundle (sub1 N)))
+  (define-wires [Cs (sub1 N)])
   (define Cins (cons Cin Cs))
   (define Couts (snoc Cs Cout))
   (map Full-Adder A B Cins Couts Sum))
@@ -516,7 +521,7 @@
 (module+ test
   (define (chk-clock N)
     (with-chk (['N N])
-      (define Os (Bundle N))
+      (define-wires [Os N])
       (define C (Clock Os))
       (for ([i (in-range N)])
         (with-chk (['i i])
@@ -623,8 +628,9 @@
             [((1)) ((1))]))
   
   (define (chk-rom N vals)
-    (define Addr (Bundle (ROM-AddrSpace vals)))
-    (define Value (Bundle N))
+    (define-wires
+      [Addr (ROM-AddrSpace vals)]
+      [Value N])
     (define n (ROM vals Addr Value))
     (for ([i (in-naturals)]
           [v (in-list vals)])
@@ -641,12 +647,26 @@
        (for/list ([i (in-range (expt 2 N))])
          i)))))
 
+(define (Cut/N Src Dst)
+  (define FS (flatten Src))
+  (define SrcN (length FS))
+  (define FD (flatten Dst))
+  (define DstN (length FD))
+  (unless (= SrcN DstN)
+    (error 'Cut/N "Source(~v) and dest(~v) are not same length"
+           SrcN DstN))
+  (Dupe/N FS FD))
+(module+ test
+  (chk-tt Cut/N
+          '([(( 0 1  0  1 1 0  0 1))
+             (((0 1) 0 (1 1 0) 0 1))])))
+
 ;; XXX
 (define RegisterRead void)
 (define Latch void)
 (define ALU void)
 (define RegisterSet void)
-(define Cut/N void)
+(define Mux/N void)
 
 (define (MIC-1 μCodeLength Microcode
                Registers
@@ -696,10 +716,10 @@
        (RegisterRead Registers Bsel B-Bus)
        (Latch Clock:2 A-Bus A-latch-out)
        (Latch Clock:2 B-Bus B-latch-out)
-       (Mux MIR:AMUX MBR A-latch-out Amux-out)
+       (Mux/N MIR:AMUX MBR A-latch-out Amux-out)
        (ALU Amux-out B-Bus MIR:ALU ALU-out N Z)
        (MicroSeqLogic N Z MIR:COND MicroSeqLogic-out)
-       (Mux MicroSeqLogic-out MPC-Inc-out MIR:ADDR Mmux-out)
+       (Mux/N MicroSeqLogic-out MPC-Inc-out MIR:ADDR Mmux-out)
        (Decoder/N MIR:SH (list GROUND Shifter-Right? Shifter-Left? GROUND))
        (Shifter/N Shifter-Left? Shifter-Right? ALU-out Shifter-out)
        (And Clock:4 MIR:ENC Write-C?)
@@ -713,9 +733,7 @@
 (module+ main
   (define WordSize 16)
   (define RegisterCount 16)
-  (define Microcode
-    ;; XXX
-    (list 0 0))
+  (define Microcode (make-list 256 0))
   (define-wires
     Read? Write?
     [MAR WordSize] MAR?
