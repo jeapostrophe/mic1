@@ -97,31 +97,99 @@
 
 ;; Analysis
 
-;; xxx compile to C (or LLVM assembly)
-
 ;; xxx perform optimzations on the network? remove not not? remove
 ;; duplication? represent an output wire as the nand and hash-cons
 ;; those? iterate to fix-point?
 
-(define (net-count sn)
-  (define C 0)
-  (define WC (make-hasheq))
-  (define SET (make-hasheq))
+(define (analyze sn #:label [label "Circuit"])
+  (define Gates 0)
+  (define WireUses (make-hasheq))
+  (define WireSets (make-hasheq))
   (tree-walk
    sn
    (match-lambda
      [(nand a b o)
-      (set! C (add1 C))
+      (set! Gates (add1 Gates))
       (for ([x (in-list (list a b o))])
-        (hash-update! WC x add1 0))
-      (hash-update! SET o add1 0)]))
+        (hash-update! WireUses x add1 0))
+      (hash-update! WireSets o add1 0)]))
 
-  (for ([(w c) (in-hash SET)]
+  (for ([(w c) (in-hash WireSets)]
         #:unless (eq? w GROUND)
         #:when (> c 1))
     (eprintf "~a wire set more than once.\n" w))
 
-  (values C (hash-count WC)))
+  (eprintf "~a has ~a NAND gates and ~a wires"
+           label Gates (hash-count WireUses))
+
+  (with-output-to-file (path-add-extension label #".c")
+    #:exists 'replace
+    (λ ()
+      (define Wire->Id (make-hasheq))
+
+      (printf "// Wires\n")
+      (for ([w (in-hash-keys WireUses)])
+        (define id (gensym 'w))
+        (hash-set! Wire->Id w id)
+        (printf "char ~a = 0;\n" id))
+      (printf "\n")
+
+      (printf "void cycle() {\n")
+      (tree-walk
+       sn
+       (match-lambda
+         [(nand a b o)
+          ;; XXX change to & and check
+          (printf "\t~a = !(~a && ~a);\n"
+                  (hash-ref Wire->Id o)
+                  (hash-ref Wire->Id a)
+                  (hash-ref Wire->Id b))]))
+      (printf "}\n")))
+
+  (with-output-to-file (path-add-extension label #".ll")
+    #:exists 'replace
+    (λ ()
+      (define Wire->Idx (make-hasheq))
+      (for ([w (in-hash-keys WireUses)]
+            [i (in-naturals)])
+        (hash-set! Wire->Idx w i))
+      (define WC (hash-count Wire->Idx))
+      ;; xxx maybe divide into word-sized things
+      (define WType (format "[~a x i1]" WC))
+
+      (printf "; Wires\n")
+      (printf "@WIRES = global ~a zeroinitializer, align 1\n" WType)
+      (printf "\n")
+
+      ;; XXX Maybe a better strategy is to load them all and then
+      ;; track changes, then install them back in, because we don't
+      ;; need to be able to read the array during writes.
+      (printf "define void @cycle() {\n")
+      (printf "\t%WIRES0 = load ~a, ~a* @WIRES, align 1\n" WType WType)
+      (define cur-ver 0)
+      (tree-walk
+       sn
+       (match-lambda
+         [(nand a b o)
+          (define last-ver cur-ver)
+          (set! cur-ver (add1 cur-ver))
+          (define next-ver cur-ver)
+          (define a-idx (hash-ref Wire->Idx a))
+          (define b-idx (hash-ref Wire->Idx b))
+          (define o-idx (hash-ref Wire->Idx o))
+          (printf "\t%a~a = extractvalue ~a %WIRES~a, ~a\n"
+                  next-ver WType last-ver a-idx)
+          (printf "\t%b~a = extractvalue ~a %WIRES~a, ~a\n"
+                  next-ver WType last-ver a-idx)
+          (printf "\t%o~an = and i1 %a~a, %b~a\n"
+                  next-ver next-ver next-ver)
+          (printf "\t%o~a = xor i1 %o~an, 1\n"
+                  next-ver next-ver)
+          (printf "\t%WIRES~a = insertvalue ~a %WIRES~a, i1 %o~a, ~a\n"
+                  next-ver WType last-ver next-ver o-idx)]))
+      (printf "\tstore ~a %WIRES~a, ~a* @WIRES, align 1\n" WType cur-ver WType)
+      (printf "\tret void\n")
+      (printf "}\n"))))
 
 ;; Exhaustive testing
 (module+ test
@@ -278,29 +346,41 @@
             ((1 0) (0))
             ((1 1) (1)))))
 
+(define (And/N A B O)
+  (map And A B O))
+
 (define (binary->nary Op Unit)
-  (define (nary l)
-    (match l
-      [(list Out) (Id Unit Out)]
-      [(list X Out) (Id X Out)]
-      [(list A B Out) (Op A B Out)]
-      [(list* A B More)
-       (Net (T)
-            (Op A B T)
-            (nary (cons T More)))]))
-  (λ l (nary l)))
+  (define (nary ins Out)
+    (match ins
+      [(list) (Id Unit Out)]
+      [(list X) (Id X Out)]
+      [(list A B) (Op A B Out)]
+      [More
+       (define N (length More))
+       (cond
+         [(odd? N)
+          (Net (T)
+               (nary (rest More) T)
+               (Op (first More) T Out))]
+         [else
+          (define-values (front back) (split-at More (/ N 2)))
+          (Net (F B)
+               (nary front F)
+               (nary back B)
+               (Op F B Out))])]))
+  nary)
 
 (define And* (binary->nary And TRUE))
 (module+ test
   (chk-tt And*
-          '(((0 0 0) (0))
-            ((0 0 1) (0))
-            ((0 1 0) (0))
-            ((0 1 1) (0))
-            ((1 0 0) (0))
-            ((1 0 1) (0))
-            ((1 1 0) (0))
-            ((1 1 1) (1)))))
+          '((((0 0 0)) (0))
+            (((0 0 1)) (0))
+            (((0 1 0)) (0))
+            (((0 1 1)) (0))
+            (((1 0 0)) (0))
+            (((1 0 1)) (0))
+            (((1 1 0)) (0))
+            (((1 1 1)) (1)))))
 
 (define (Or a b o)
   (Net (na nb)
@@ -317,14 +397,31 @@
 (define Or* (binary->nary Or FALSE))
 (module+ test
   (chk-tt Or*
-          '(((0 0 0) (0))
-            ((0 0 1) (1))
-            ((0 1 0) (1))
-            ((0 1 1) (1))
-            ((1 0 0) (1))
-            ((1 0 1) (1))
-            ((1 1 0) (1))
-            ((1 1 1) (1)))))
+          '((((0 0 0)) (0))
+            (((0 0 1)) (1))
+            (((0 1 0)) (1))
+            (((0 1 1)) (1))
+            (((1 0 0)) (1))
+            (((1 0 1)) (1))
+            (((1 1 0)) (1))
+            (((1 1 1)) (1))))
+  (chk-tt Or*
+          '((((0 0 0 0)) (0))
+            (((0 0 0 1)) (1))
+            (((0 0 1 0)) (1))
+            (((0 0 1 1)) (1))
+            (((0 1 0 0)) (1))
+            (((0 1 0 1)) (1))
+            (((0 1 1 0)) (1))
+            (((0 1 1 1)) (1))
+            (((1 0 0 0)) (1))
+            (((1 0 0 1)) (1))
+            (((1 0 1 0)) (1))
+            (((1 0 1 1)) (1))
+            (((1 1 0 0)) (1))
+            (((1 1 0 1)) (1))
+            (((1 1 1 0)) (1))
+            (((1 1 1 1)) (1)))))
 
 (define (Nor a b o)
   (Net (t)
@@ -602,7 +699,7 @@
        (Decoder/N Code (list NoJump JumpOnN JumpOnZ JumpAlways))
        (And JumpOnN N JumpOnN!)
        (And JumpOnZ Z JumpOnZ!)
-       (Or* JumpOnN! JumpOnZ! JumpAlways Out)))
+       (Or* (list JumpOnN! JumpOnZ! JumpAlways) Out)))
 (module+ test
   (chk-tt MicroSeqLogic
           (for*/list ([N (in-range 2)] [Z (in-range 2)]
@@ -629,11 +726,11 @@
   (unless (= (length value-bits) (length Which))
     (error 'ROM-1bit "Mismatch of signals and bits"))
   ;; If the value bit is #t, then connect it to the output or
-  (apply Or* (snoc (for/list ([vb (in-list value-bits)]
-                              [w (in-list Which)]
-                              #:when vb)
-                     w)
-                   ValueBitOut)))
+  (Or* (for/list ([vb (in-list value-bits)]
+                  [w (in-list Which)]
+                  #:when vb)
+         w)
+       ValueBitOut))
 (module+ test
   (chk-tt ROM-1bit
           '([((#f #t) (0 0)) (0)]
@@ -719,10 +816,87 @@
           '([(( 0 1  0  1 1 0  0 1))
              (((0 1) 0 (1 1 0) 0 1))])))
 
+(define (check-RegisterArgs who Value Which Registers)
+  (unless (= (length Which) (length Registers))
+    (error who "Not enough selectors for register set"))
+
+  (define ValueN (length Value))
+  (for ([R (in-list Registers)])
+    (unless (= (length R) ValueN)
+      (error who "Bit mismatch in register/value"))))
+
+;; xxx http://sce2.umkc.edu/csee/hieberm/281_new/lectures/seq-storage-components/seq-storage.html
+(define (RegisterSet Signal In Which Registers)
+  (check-RegisterArgs 'RegisterSet In Which Registers)
+
+  (for/list ([W (in-list Which)]
+             [R (in-list Registers)])
+    (Net (Signal*W)
+         (And Signal W Signal*W)
+         (Latch/N Signal*W In R))))
+(module+ test
+  (let ()
+    (define-wires Signal [In 3] [Which 2])
+    (define Registers (build-list 2 (λ (i) (Bundle 3))))
+    (simulate&chk
+     (RegisterSet Signal In Which Registers)
+     (flatten
+      (list
+       Signal   In     Which   Registers))
+     '([(0      0 0 0  0 0     0 0 0  0 0 0)
+        (0      0 0 0  0 0     _ _ _  _ _ _)
+        (0      0 0 0  0 0     0 0 0  0 0 0)]
+
+       [(0      0 0 0  0 0     0 0 0  0 0 0)
+        (0      1 0 1  0 0     _ _ _  _ _ _)
+        (0      1 0 1  0 0     0 0 0  0 0 0)]
+
+       [(0      1 0 1  0 0     0 0 0  0 0 0)
+        (1      1 0 1  0 0     _ _ _  _ _ _)
+        (1      1 0 1  0 0     0 0 0  0 0 0)]
+
+       [(1      1 0 1  0 0     0 0 0  0 0 0)
+        (1      1 0 1  1 0     _ _ _  _ _ _)
+        (1      1 0 1  1 0     1 0 1  0 0 0)]
+
+       [(1      1 0 1  1 0     1 0 1  0 0 0)
+        (1      0 0 1  0 1     _ _ _  _ _ _)
+        (1      0 0 1  0 1     1 0 1  0 0 1)]
+
+       [(1      0 0 1  0 1     1 0 1  0 0 1)
+        (0      0 0 0  0 0     _ _ _  _ _ _)
+        (0      0 0 0  0 0     1 0 1  0 0 1)]))))
+
+(define (RegisterRead-1Bit RegisterBits Which OutBit)
+  (check-RegisterArgs 'RegisterRead-1Bit (list OutBit) Which (map list RegisterBits))
+  (Net ([R*W (length Which)])
+       (And/N RegisterBits Which R*W)
+       (Or* R*W OutBit)))
+(module+ test
+  (chk-tt
+   RegisterRead-1Bit
+   '([((0 0) (0 0)) (0)]
+     [((1 0) (1 0)) (1)]
+     [((0 1) (0 1)) (1)])))
+
+(define (RegisterRead Registers Which Out)
+  (check-RegisterArgs 'RegisterRead Out Which Registers)
+  (for/list ([O (in-list Out)]
+             [i (in-naturals)])
+    (RegisterRead-1Bit
+     (for/list ([R (in-list Registers)])
+       (list-ref R i))
+     Which
+     O)))
+(module+ test
+  (chk-tt
+   RegisterRead
+   '([(((1 0) (0 1)) (0 0)) ((0 0))]
+     [(((1 0) (0 1)) (1 0)) ((1 0))]
+     [(((1 0) (0 1)) (0 1)) ((0 1))])))
+
 ;; XXX
 (define ALU void)
-(define RegisterRead void)
-(define RegisterSet void)
 
 (define (MIC-1 μCodeLength Microcode
                Registers
@@ -779,7 +953,7 @@
        (Decoder/N MIR:SH (list GROUND Shifter-Right? Shifter-Left? GROUND))
        (Shifter/N Shifter-Left? Shifter-Right? ALU-out Shifter-out)
        (And Clock:4 MIR:ENC Write-C?)
-       (RegisterSet Registers Write-C? C-Bus Csel)
+       (RegisterSet Write-C? C-Bus Csel Registers)
        (Latch/N Clock:4 Mmux-out MPC-out)
        (Increment/N MPC-out MPC-Inc-carry MPC-Inc-out)
 
@@ -803,9 +977,10 @@
            Read? Write?
            MAR MAR?
            MBR MBR?))
-  (define-values (G W) (net-count the-mic1))
-  (format "MIC-1 has ~a NAND gates and ~a wires"
-          G W)
+
+  (analyze the-mic1
+           #:label "MIC-1")
+
   ;; XXX do something with the-mic1
 
   )
