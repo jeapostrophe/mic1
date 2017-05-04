@@ -206,7 +206,35 @@
             ((1 1) (0)))))
 
 ;; xxx test latch
-;; xxx test cell
+(define (Latch Signal In Out)
+  (define l (latch Signal (box #f) (box #f)))
+  (Net ()
+       l
+       (Id In l)
+       (Id l Out)))
+(module+ test
+  (let ()
+    (define-wires Signal In Out)
+    (define c (Latch Signal In Out))
+    ;; xxx
+    #;(simulate&chk
+     c (list Signal In Out)
+     ;; xxx
+     '([(0 0 0) (0 0 0)]))
+    42))
+
+(module+ test
+  (let ()
+    (define c (Cell))
+    (chk (bread c) #f)
+    (simulate! c)
+    (chk (bread c) #f)
+    (bwrite! c #t)
+    (chk (bread c) #f)
+    (simulate! c)
+    (chk (bread c) #t)
+    (simulate! c)
+    (chk (bread c) #t)))
 
 (define (Not a o)
   (Nand a a o))
@@ -624,6 +652,7 @@
             [((1 1) (1 0)) (1)]
             [((1 1) (0 1)) (1)])))
 
+;; XXX This is really inefficient, it has almost 42k wires and gates
 (define (ROM vals Addr Value)
   (define A (ROM-AddrSpace vals))
   (define W (length Value))
@@ -692,7 +721,7 @@
              (((0 1) 0 (1 1 0) 0 1))])))
 
 ;; XXX
-(define Latch void)
+(define Latch/N void)
 (define ALU void)
 (define RegisterRead void)
 (define RegisterSet void)
@@ -733,7 +762,7 @@
   (Net ()
        (Clock (list Clock:1 Clock:2 Clock:3 Clock:4))
        (ROM Microcode MPC-out pre-MIR)
-       (Latch Clock:1 pre-MIR MIR)
+       (Latch/N Clock:1 pre-MIR MIR)
        (Cut/N MIR
               (list MIR:AMUX MIR:COND MIR:ALU MIR:SH
                     MIR:MBR MIR:MAR MIR:RD MIR:WR
@@ -743,8 +772,8 @@
        (Decoder/N MIR:C Csel)
        (RegisterRead Registers Asel A-Bus)
        (RegisterRead Registers Bsel B-Bus)
-       (Latch Clock:2 A-Bus A-latch-out)
-       (Latch Clock:2 B-Bus B-latch-out)
+       (Latch/N Clock:2 A-Bus A-latch-out)
+       (Latch/N Clock:2 B-Bus B-latch-out)
        (Mux/N MBR A-latch-out MIR:AMUX Amux-out)
        (ALU Amux-out B-Bus MIR:ALU ALU-out N Z)
        (MicroSeqLogic N Z MIR:COND MicroSeqLogic-out)
@@ -753,7 +782,7 @@
        (Shifter/N Shifter-Left? Shifter-Right? ALU-out Shifter-out)
        (And Clock:4 MIR:ENC Write-C?)
        (RegisterSet Registers Write-C? C-Bus Csel)
-       (Latch Clock:4 Mmux-out MPC-out)
+       (Latch/N Clock:4 Mmux-out MPC-out)
        (Increment/N MPC-out MPC-Inc-carry MPC-Inc-out)
 
        (And MIR:MAR Clock:3 MAR?)
