@@ -825,7 +825,8 @@
     (unless (= (length R) ValueN)
       (error who "Bit mismatch in register/value"))))
 
-;; xxx http://sce2.umkc.edu/csee/hieberm/281_new/lectures/seq-storage-components/seq-storage.html
+;; xxx See if this can be improved based on the following system:
+;; http://sce2.umkc.edu/csee/hieberm/281_new/lectures/seq-storage-components/seq-storage.html
 (define (RegisterSet Signal In Which Registers)
   (check-RegisterArgs 'RegisterSet In Which Registers)
 
