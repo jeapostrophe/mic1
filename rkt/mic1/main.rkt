@@ -1127,29 +1127,36 @@
     (image->memory (expt 2 (- WordSize 4)) WordSize MemoryImage))
 
   (let/ec esc
-    (let loop ([cycle 0] [subcycle 0])
+    (let loop ([readc 0] [writec 0] [cycle 0] [subcycle 0])
       (simulate! the-mic1)
-      (printf "~a.~a MPC=~a PC=~a AC=~a IR=~a RD=~a WR=~a MAR=~a MBR=~a\n"
+      (printf "~a.~a MPC=~a PC=~a AC=~a IR=~a RD=~a(~a) WR=~a(~a) MAR=~a MBR=~a\n"
               cycle subcycle
               (read-number MPC)
               (register-read 'PC) (register-read 'AC) (register-read 'IR)
-              (if (bread Read?) 1 0)
-              (if (bread Write?) 1 0)
+              (if (bread Read?) 1 0) readc
+              (if (bread Write?) 1 0) writec
               (read-number MAR)
               (read-number MBR))
       ;; xxx still not working, this is for testing
       (read-char)
+      (define next-readc (if (bread Read?) (add1 readc) 0))
+      (define next-writec (if (bread Write?) (add1 writec) 0))
       (when (and (bread Read?) (bread Write?))
         ;; xxx run debugger
         (eprintf "Exiting simulator...")
         (esc))
-      ;; xxx these should really be delayed by 1 cycle
-      (when (bread Write?)
-        (vector-set! Memory (read-number MAR) (read-number MBR)))
-      (when (bread Read?)
-        (write-number! MBR (vector-ref Memory (read-number MAR))))
-      (loop (if (= subcycle 3) (add1 cycle) cycle)
+      (when (> next-writec 4)
+        (vector-set! Memory (read-number MAR) (read-number MBR))
+        (set! next-writec 0))
+      (when (> next-readc 4)
+        (write-number! MBR (vector-ref Memory (read-number MAR)))
+        (set! next-readc 0))
+      (loop next-readc next-writec
+            (if (= subcycle 3) (add1 cycle) cycle)
             (modulo (add1 subcycle) 4)))))
+
+;; xxx need to write automated testing for this with custom microcode
+;; to make sure each thing works.
 
 (define (file->image p)
   (local-require racket/file)
