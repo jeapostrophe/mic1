@@ -86,8 +86,10 @@
 
 (define (write-number! B n)
   (define len (integer-length n))
-  (unless (<= len (length B))
-    (error 'write-number! "Not enough bits for number"))
+  (define Blen (length B))
+  (unless (<= len Blen)
+    (error 'write-number! "Not enough bits(~v) for number(~v [~v bits]):"
+           Blen n len))
   (for ([b (in-list B)]
         [i (in-naturals)])
     (bwrite! b (bitwise-bit-set? n i))))
@@ -119,7 +121,7 @@
         #:when (> c 1))
     (eprintf "~a wire set more than once.\n" w))
 
-  (eprintf "~a has ~a NAND gates and ~a wires"
+  (eprintf "~a has ~a NAND gates and ~a wires\n"
            label Gates (hash-count WireUses))
 
   (with-output-to-file (path-add-extension label #".c")
@@ -139,13 +141,14 @@
        sn
        (match-lambda
          [(nand a b o)
-          ;; XXX change to & and check
-          (printf "\t~a = !(~a && ~a);\n"
+          (printf "\t~a = !(~a & ~a);\n"
                   (hash-ref Wire->Id o)
                   (hash-ref Wire->Id a)
                   (hash-ref Wire->Id b))]))
       (printf "}\n")))
 
+  ;; opt -S -O3 MIC-1.ll > MIC-1.opt.ll
+  ;; llc -O3 MIC-1.opt.ll
   (with-output-to-file (path-add-extension label #".ll")
     #:exists 'replace
     (λ ()
@@ -161,11 +164,18 @@
       (printf "@WIRES = global ~a zeroinitializer, align 1\n" WType)
       (printf "\n")
 
-      ;; XXX Maybe a better strategy is to load them all and then
-      ;; track changes, then install them back in, because we don't
-      ;; need to be able to read the array during writes.
       (printf "define void @cycle() {\n")
+
+      (printf "\t; Load\n")
       (printf "\t%WIRES0 = load ~a, ~a* @WIRES, align 1\n" WType WType)
+      (define Wire->Ver (make-hasheq))
+      (for ([(w idx) (in-hash Wire->Idx)])
+        (printf "\t%w_~a_~a = extractvalue ~a %WIRES~a, ~a\n"
+                idx 0 WType 0 idx)
+        (hash-set! Wire->Ver w 0))
+
+
+      (printf "\t; Work\n")
       (define cur-ver 0)
       (tree-walk
        sn
@@ -174,22 +184,36 @@
           (define last-ver cur-ver)
           (set! cur-ver (add1 cur-ver))
           (define next-ver cur-ver)
+
           (define a-idx (hash-ref Wire->Idx a))
           (define b-idx (hash-ref Wire->Idx b))
           (define o-idx (hash-ref Wire->Idx o))
-          (printf "\t%a~a = extractvalue ~a %WIRES~a, ~a\n"
-                  next-ver WType last-ver a-idx)
-          (printf "\t%b~a = extractvalue ~a %WIRES~a, ~a\n"
-                  next-ver WType last-ver a-idx)
-          (printf "\t%o~an = and i1 %a~a, %b~a\n"
-                  next-ver next-ver next-ver)
-          (printf "\t%o~a = xor i1 %o~an, 1\n"
-                  next-ver next-ver)
-          (printf "\t%WIRES~a = insertvalue ~a %WIRES~a, i1 %o~a, ~a\n"
-                  next-ver WType last-ver next-ver o-idx)]))
-      (printf "\tstore ~a %WIRES~a, ~a* @WIRES, align 1\n" WType cur-ver WType)
+          (define a-ver (hash-ref Wire->Ver a))
+          (define b-ver (hash-ref Wire->Ver b))
+
+          (printf "\t%w_~a_~an = and i1 %w_~a_~a, %w_~a_~a\n"
+                  o-idx next-ver a-idx a-ver b-idx b-ver)
+          (printf "\t%w_~a_~a = xor i1 %w_~a_~an, 1\n"
+                  o-idx next-ver o-idx next-ver)
+
+          (hash-set! Wire->Ver o next-ver)]))
+
+      (printf "\t; Store\n")
+      (define last-wires-ver 0)
+      (for ([(w idx) (in-hash Wire->Idx)]
+            [next-ver (in-naturals 1)])
+        (define w-last-ver (hash-ref Wire->Ver w))
+        (printf "\t%WIRES~a = insertvalue ~a %WIRES~a, i1 %w_~a_~a, ~a\n"
+                next-ver WType last-wires-ver idx w-last-ver idx)
+        (set! last-wires-ver next-ver))
+      (printf "\tstore ~a %WIRES~a, ~a* @WIRES, align 1\n" WType last-wires-ver WType)
+
       (printf "\tret void\n")
-      (printf "}\n"))))
+      (printf "}\n")))
+
+  ;; xxx compile directly to assembly
+
+  )
 
 ;; Exhaustive testing
 (module+ test
@@ -256,9 +280,10 @@
                      check-e)))))
 
            (for ([N (in-range 1 MAX-N)])
-             (define MAX-V (expt 2 N))
              (define (in-iter w)
-               (if (list? w) (in-range MAX-V) (in-list '(#f #t))))
+               (if (list? w)
+                 (in-range (expt 2 (length w)))
+                 (in-list '(#f #t))))
              (for* ([iw.i (in-iter iw.d)] ...)
                (the-chk #:N N iw.i ...)))))])))
 
@@ -896,8 +921,82 @@
      [(((1 0) (0 1)) (1 0)) ((1 0))]
      [(((1 0) (0 1)) (0 1)) ((0 1))])))
 
-;; XXX
-(define ALU void)
+(define (IsZero? In Bit)
+  (Net (T)
+       (Or* In T)
+       (Not T Bit)))
+(module+ test
+  (define-chk-num chk-iszero
+    #:N N #:in ([In N]) #:out (Bit)
+    #:circuit IsZero? #:exhaust 5
+    #:check
+    (chk Bit (zero? In))))
+
+(define (IsNegative? In Bit)
+  (Id (last In) Bit))
+(module+ test
+  (define (bits->number bs)
+    (for/sum ([i (in-naturals)]
+              [b (in-list bs)])
+      (* (if b 1 0) (expt 2 i))))
+  (chk (bits->number '(#t #f #f #f))  1
+       (bits->number '(#t #f #t #f))  5
+       (bits->number '(#t #t #f #t)) 11
+       (bits->number '(#t #t #t #t)) 15)
+  
+  (define (unsigned->signed bits x)
+    (define unbs (number->bits bits x))
+    (match-define (cons last-bit rfirst-bits) (reverse unbs))
+    (define first-bits (reverse rfirst-bits))
+    (+ (* -1 (if last-bit 1 0) (expt 2 (sub1 bits)))
+       (bits->number first-bits)))
+  (chk (unsigned->signed 4 #b0001)  1
+       (unsigned->signed 4 #b0101)  5
+       (unsigned->signed 4 #b1011) -5
+       (unsigned->signed 4 #b1111) -1)
+  
+  (define-chk-num chk-isneg
+    #:N N #:in ([In N]) #:out (Bit)
+    #:circuit IsNegative? #:exhaust 5
+    #:check
+    (chk Bit (negative? (unsigned->signed N In)))))
+
+(define (ALU A B Function-Select Out Negative? Zero?)
+  (define N (length A))
+  (unless (= N (length B))
+    (error 'ALU "B is wrong length"))
+  (unless (= N (length Out))
+    (error 'ALU "Out is wrong length"))
+  (unless (= 2 (length Function-Select))
+    (error 'ALU "Function Select is wrong length"))
+  
+  (Net ([TheSum N] [TheAnd N] [NotA N] [Function-Selects 4])
+       (Adder/N A B FALSE GROUND TheSum)
+       (And/N A B TheAnd)
+       (Not/N A NotA)
+       (Decoder/N Function-Select Function-Selects)
+       (RegisterRead (list TheSum TheAnd A NotA) Function-Selects Out)
+       (IsZero? Out Zero?)
+       (IsNegative? Out Negative?)))
+(module+ test
+  (define-chk-num chk-alu
+    #:N N
+    #:in ([A N] [B N] [Function-Select 2])
+    #:out ([Out N] Negative? Zero?)
+    #:circuit ALU #:exhaust 5
+    #:check
+    (chk (vector Out Negative? Zero?)
+         (let* ([Ans-premod
+                 (match Function-Select
+                   [0 (+ A B)]
+                   [1 (bitwise-and A B)]
+                   [2 A]
+                   [3 (bitwise-not A)])]
+                [Ans
+                 (modulo Ans-premod (expt 2 N))])
+           (vector Ans
+                   (negative? (unsigned->signed N Ans))
+                   (zero? Ans))))))
 
 (define (MIC-1 μCodeLength Microcode
                Registers
