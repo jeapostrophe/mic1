@@ -932,18 +932,19 @@
     #:check
     (chk Bit (zero? In))))
 
-(define (IsNegative? In Bit)
-  (Id (last In) Bit))
+(define (bits->number bs)
+  (for/sum ([i (in-naturals)]
+            [b (in-list bs)])
+    (* (if b 1 0) (expt 2 i))))
 (module+ test
-  (define (bits->number bs)
-    (for/sum ([i (in-naturals)]
-              [b (in-list bs)])
-      (* (if b 1 0) (expt 2 i))))
   (chk (bits->number '(#t #f #f #f))  1
        (bits->number '(#t #f #t #f))  5
        (bits->number '(#t #t #f #t)) 11
-       (bits->number '(#t #t #t #t)) 15)
-  
+       (bits->number '(#t #t #t #t)) 15))
+
+(define (IsNegative? In Bit)
+  (Id (last In) Bit))
+(module+ test
   (define (unsigned->signed bits x)
     (define unbs (number->bits bits x))
     (match-define (cons last-bit rfirst-bits) (reverse unbs))
@@ -954,7 +955,7 @@
        (unsigned->signed 4 #b0101)  5
        (unsigned->signed 4 #b1011) -5
        (unsigned->signed 4 #b1111) -1)
-  
+
   (define-chk-num chk-isneg
     #:N N #:in ([In N]) #:out (Bit)
     #:circuit IsNegative? #:exhaust 5
@@ -969,7 +970,7 @@
     (error 'ALU "Out is wrong length"))
   (unless (= 2 (length Function-Select))
     (error 'ALU "Function Select is wrong length"))
-  
+
   (Net ([TheSum N] [TheAnd N] [NotA N] [Function-Selects 4])
        (Adder/N A B FALSE GROUND TheSum)
        (And/N A B TheAnd)
@@ -999,46 +1000,44 @@
                    (zero? Ans))))))
 
 (define (MIC-1 μCodeLength Microcode
-               Registers
+               Registers MPC-out
                Read? Write?
-               MAR MAR?
-               MBR MBR?)
+               MAR MBR)
   (define μAddrSpace (ROM-AddrSpace Microcode))
   (define WordBits (length MBR))
   (define RegisterCount (length Registers))
   (define RegisterBits (integer-length (sub1 RegisterCount)))
 
   ;; Aliases
-  (define B-latch-out MAR)
   (define MIR:RD Read?)
   (define MIR:WR Write?)
-  (define C-Bus MBR)
-  (define Shifter-out C-Bus)
   (define-wires
     Clock:1 Clock:2 Clock:3 Clock:4
     N Z MicroSeqLogic-out
     [pre-MIR μCodeLength] [MIR μCodeLength]
     MIR:AMUX [MIR:COND 2] [MIR:ALU 2] [MIR:SH 2]
-    MIR:MBR MIR:MAR
+    MIR:MBR MBR? MIR:MAR MAR?
     MIR:ENC
     [MIR:C RegisterBits] [MIR:B RegisterBits] [MIR:A RegisterBits]
     [MIR:ADDR μAddrSpace]
-    [MPC-out μAddrSpace] [Mmux-out μAddrSpace]
+    #;[MPC-out μAddrSpace] [Mmux-out μAddrSpace]
     MPC-Inc-carry [MPC-Inc-out μAddrSpace]
     [Asel RegisterCount] [Bsel RegisterCount] [Csel RegisterCount]
 
-    [A-Bus WordBits] [B-Bus WordBits]
-    [A-latch-out WordBits]
+    [A-Bus WordBits] [B-Bus WordBits] [C-Bus WordBits]
+    [A-latch-out WordBits] [B-latch-out WordBits]
     [Amux-out WordBits] [ALU-out WordBits]
     Shifter-Left? Shifter-Right? Write-C?)
+  (define Shifter-out C-Bus)
   (Net ()
        (Clock (list Clock:1 Clock:2 Clock:3 Clock:4))
        (ROM Microcode MPC-out pre-MIR)
        (Latch/N Clock:1 pre-MIR MIR)
        (Cut/N MIR
-              (list MIR:AMUX MIR:COND MIR:ALU MIR:SH
-                    MIR:MBR MIR:MAR MIR:RD MIR:WR
-                    MIR:ENC MIR:C MIR:B MIR:A MIR:ADDR))
+              (reverse
+               (list MIR:AMUX MIR:COND MIR:ALU MIR:SH
+                     MIR:MBR MIR:MAR MIR:RD MIR:WR
+                     MIR:ENC MIR:C MIR:B MIR:A MIR:ADDR)))
        (Decoder/N MIR:A Asel)
        (Decoder/N MIR:B Bsel)
        (Decoder/N MIR:C Csel)
@@ -1046,41 +1045,155 @@
        (RegisterRead Registers Bsel B-Bus)
        (Latch/N Clock:2 A-Bus A-latch-out)
        (Latch/N Clock:2 B-Bus B-latch-out)
+       (And MIR:MAR Clock:3 MAR?)
+       (Latch/N MAR? B-latch-out MAR)
        (Mux/N MBR A-latch-out MIR:AMUX Amux-out)
        (ALU Amux-out B-Bus MIR:ALU ALU-out N Z)
        (MicroSeqLogic N Z MIR:COND MicroSeqLogic-out)
        (Mux/N MPC-Inc-out MIR:ADDR MicroSeqLogic-out Mmux-out)
        (Decoder/N MIR:SH (list GROUND Shifter-Right? Shifter-Left? GROUND))
        (Shifter/N Shifter-Left? Shifter-Right? ALU-out Shifter-out)
+       (And MIR:MBR Clock:4 MBR?)
+       (Latch/N MBR? Shifter-out MBR)
        (And Clock:4 MIR:ENC Write-C?)
        (RegisterSet Write-C? C-Bus Csel Registers)
        (Latch/N Clock:4 Mmux-out MPC-out)
-       (Increment/N MPC-out MPC-Inc-carry MPC-Inc-out)
+       (Increment/N MPC-out MPC-Inc-carry MPC-Inc-out)))
 
-       (And MIR:MAR Clock:3 MAR?)
-       (And MIR:MBR Clock:4 MBR?)))
+(define (image->memory MemSize WordSize Image)
+  (define Mem (make-vector MemSize 0))
+  (define ImageLen (length Image))
+  (unless (<= ImageLen MemSize)
+    (error 'image->memory "MemoryImage is too large: ~v vs ~v"
+           MemSize ImageLen))
 
-(module+ main
+  (for ([i (in-naturals)]
+        [m (in-list Image)])
+    (unless (<= (integer-length m) WordSize)
+      (error 'image->memory "Image word ~a too large" i))
+    (vector-set! Mem i m))
+
+  Mem)
+
+(define (simulate-MIC-1 MicrocodeImage MemoryImage InitialPC InitialSP)
   (define WordSize 16)
   (define RegisterCount 16)
-  ;; xxx load microcode from file
-  (define Microcode (make-list 256 0))
+  (define MicrocodeSize 256)
+  (define MicrocodeWordSize 32)
+
+  (define Microcode
+    (vector->list
+     (image->memory MicrocodeSize MicrocodeWordSize MicrocodeImage)))
+
   (define-wires
+    [MPC (ROM-AddrSpace Microcode)]
     Read? Write?
-    [MAR WordSize] MAR?
-    [MBR WordSize] MBR?)
+    [MAR WordSize]
+    [MBR WordSize])
   (define Registers
     (build-list RegisterCount (λ (i) (Bundle WordSize))))
+  (define RegisterMap
+    (for/hasheq ([label
+                  (in-list
+                   '(PC AC SP IR TIR Z P1 N1 AMASK SMASK A B C D E F))]
+                 [reg (in-list Registers)])
+      (values label reg)))
+
+  (define (register-set! r n)
+    (write-number! (hash-ref RegisterMap r) n))
+  (define (register-read r)
+    (read-number (hash-ref RegisterMap r)))
+
+  (register-set! 'PC InitialPC)
+  (register-set! 'SP InitialSP)
+  (register-set! 'Z 0)
+  (register-set! 'P1 +1)
+  (register-set! 'N1 -1)
+  (register-set! 'AMASK #b0000111111111111)
+  (register-set! 'SMASK #b0000000011111111)
+
   (define the-mic1
-    (MIC-1 32 Microcode
-           Registers
+    (MIC-1 MicrocodeWordSize Microcode
+           Registers MPC
            Read? Write?
-           MAR MAR?
-           MBR MBR?))
+           MAR MBR))
 
-  (analyze the-mic1
-           #:label "MIC-1")
+  (analyze #:label "MIC-1" the-mic1)
 
-  ;; XXX do something with the-mic1
+  (define Memory
+    ;; Image is smaller because there are 4 bits in instructions. This
+    ;; could be removed with memory banking or by allowing the stack
+    ;; to be higher, etc.
+    (image->memory (expt 2 (- WordSize 4)) WordSize MemoryImage))
 
-  )
+  (let/ec esc
+    (let loop ([cycle 0] [subcycle 0])
+      (simulate! the-mic1)
+      (printf "~a.~a MPC=~a PC=~a AC=~a IR=~a RD=~a WR=~a MAR=~a MBR=~a\n"
+              cycle subcycle
+              (read-number MPC)
+              (register-read 'PC) (register-read 'AC) (register-read 'IR)
+              (if (bread Read?) 1 0)
+              (if (bread Write?) 1 0)
+              (read-number MAR)
+              (read-number MBR))
+      ;; xxx still not working, this is for testing
+      (read-char)
+      (when (and (bread Read?) (bread Write?))
+        ;; xxx run debugger
+        (eprintf "Exiting simulator...")
+        (esc))
+      ;; xxx these should really be delayed by 1 cycle
+      (when (bread Write?)
+        (vector-set! Memory (read-number MAR) (read-number MBR)))
+      (when (bread Read?)
+        (write-number! MBR (vector-ref Memory (read-number MAR))))
+      (loop (if (= subcycle 3) (add1 cycle) cycle)
+            (modulo (add1 subcycle) 4)))))
+
+(define (file->image p)
+  (local-require racket/file)
+  (define lines (file->lines p))
+  (define line 0)
+  (for/list ([l (in-list lines)]
+             #:unless (char=? #\# (string-ref l 0)))
+    (set! line (add1 line))
+    (define bits
+      (for/list ([c (in-list (reverse (string->list l)))]
+                 [col (in-naturals 1)])
+        (match c
+          [#\0 #f]
+          [#\1 #t]
+          [_ (error 'file->image "Illegal character on line ~a, col ~a: ~v"
+                    line col c)])))
+    (define n (bits->number bits))
+    n))
+
+(module+ main
+  (require racket/runtime-path
+           racket/cmdline)
+
+  (define-runtime-path standard-prom-path
+    "../../examples/prom.dat")
+
+  (define-runtime-path example-asm-path
+    "../../examples/adder.o")
+  (when (zero? (vector-length (current-command-line-arguments)))
+    (current-command-line-arguments
+     (vector (path->string standard-prom-path)
+             (path->string example-asm-path))))
+
+  (define InitialPC 0)
+  (define InitialSP 1024)
+  (command-line
+   #:program "mic1"
+   #:once-each
+   [("--pc") pc-str "Initial Program Counter (default: 0)"
+    (set! InitialPC (string->number pc-str))]
+   [("--sp") sp-str "Initial Stack Pointer (default: 1024)"
+    (set! InitialSP (string->number sp-str))]
+   #:args (microcode-path memory-image-path)
+   (simulate-MIC-1 (file->image microcode-path)
+                   (file->image memory-image-path)
+                   InitialPC
+                   InitialSP)))
