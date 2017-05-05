@@ -85,17 +85,25 @@
   (if (bread b) 1 0))
 
 (define (write-number! B n)
-  (define len (integer-length n))
-  (define Blen (length B))
-  (unless (<= len Blen)
-    (error 'write-number! "Not enough bits(~v) for number(~v [~v bits]):"
-           Blen n len))
-  (for ([b (in-list B)]
-        [i (in-naturals)])
-    (bwrite! b (bitwise-bit-set? n i))))
+  (cond
+    [(list? B)
+     (define len (integer-length n))
+     (define Blen (length B))
+     (unless (<= len Blen)
+       (error 'write-number! "Not enough bits(~v) for number(~v [~v bits]):"
+              Blen n len))
+     (for ([b (in-list B)]
+           [i (in-naturals)])
+       (bwrite! b (bitwise-bit-set? n i)))]
+    [else
+     (bwriten! B n)]))
 (define (read-number B)
-  (for/fold ([n 0]) ([b (in-list B)] [i (in-naturals)])
-    (+ n (* (breadn b) (expt 2 i)))))
+  (cond
+    [(list? B)
+     (for/fold ([n 0]) ([b (in-list B)] [i (in-naturals)])
+       (+ n (* (breadn b) (expt 2 i))))]
+    [else
+     (breadn B)]))
 
 ;; Analysis
 
@@ -103,7 +111,9 @@
 ;; duplication? represent an output wire as the nand and hash-cons
 ;; those? iterate to fix-point?
 
-(define (analyze sn #:label [label "Circuit"])
+(define (analyze sn
+                 #:compile? [compile? #f]
+                 #:label [label "Circuit"])
   (define Gates 0)
   (define WireUses (make-hasheq))
   (define WireSets (make-hasheq))
@@ -124,96 +134,98 @@
   (eprintf "~a has ~a NAND gates and ~a wires\n"
            label Gates (hash-count WireUses))
 
-  (with-output-to-file (path-add-extension label #".c")
-    #:exists 'replace
-    (λ ()
-      (define Wire->Id (make-hasheq))
+  ;; xxx move to other file/function
+  (when compile?
+    (with-output-to-file (path-add-extension label #".c")
+      #:exists 'replace
+      (λ ()
+        (define Wire->Id (make-hasheq))
 
-      (printf "// Wires\n")
-      (for ([w (in-hash-keys WireUses)])
-        (define id (gensym 'w))
-        (hash-set! Wire->Id w id)
-        (printf "char ~a = 0;\n" id))
-      (printf "\n")
+        (printf "// Wires\n")
+        (for ([w (in-hash-keys WireUses)])
+          (define id (gensym 'w))
+          (hash-set! Wire->Id w id)
+          (printf "char ~a = 0;\n" id))
+        (printf "\n")
 
-      (printf "void cycle() {\n")
-      (tree-walk
-       sn
-       (match-lambda
-         [(nand a b o)
-          (printf "\t~a = !(~a & ~a);\n"
-                  (hash-ref Wire->Id o)
-                  (hash-ref Wire->Id a)
-                  (hash-ref Wire->Id b))]))
-      (printf "}\n")))
+        (printf "void cycle() {\n")
+        (tree-walk
+         sn
+         (match-lambda
+           [(nand a b o)
+            (printf "\t~a = !(~a & ~a);\n"
+                    (hash-ref Wire->Id o)
+                    (hash-ref Wire->Id a)
+                    (hash-ref Wire->Id b))]))
+        (printf "}\n")))
 
-  ;; opt -S -O3 MIC-1.ll > MIC-1.opt.ll
-  ;; llc -O3 MIC-1.opt.ll
-  (with-output-to-file (path-add-extension label #".ll")
-    #:exists 'replace
-    (λ ()
-      (define Wire->Idx (make-hasheq))
-      (for ([w (in-hash-keys WireUses)]
-            [i (in-naturals)])
-        (hash-set! Wire->Idx w i))
-      (define WC (hash-count Wire->Idx))
-      ;; xxx maybe divide into word-sized things
-      (define WType (format "[~a x i1]" WC))
+    ;; opt -S -O3 MIC1.ll > MIC1.opt.ll
+    ;; llc -O3 MIC1.opt.ll
+    (with-output-to-file (path-add-extension label #".ll")
+      #:exists 'replace
+      (λ ()
+        (define Wire->Idx (make-hasheq))
+        (for ([w (in-hash-keys WireUses)]
+              [i (in-naturals)])
+          (hash-set! Wire->Idx w i))
+        (define WC (hash-count Wire->Idx))
+        ;; xxx maybe divide into word-sized things
+        (define WType (format "[~a x i1]" WC))
 
-      (printf "; Wires\n")
-      (printf "@WIRES = global ~a zeroinitializer, align 1\n" WType)
-      (printf "\n")
+        (printf "; Wires\n")
+        (printf "@WIRES = global ~a zeroinitializer, align 1\n" WType)
+        (printf "\n")
 
-      (printf "define void @cycle() {\n")
+        (printf "define void @cycle() {\n")
 
-      (printf "\t; Load\n")
-      (printf "\t%WIRES0 = load ~a, ~a* @WIRES, align 1\n" WType WType)
-      (define Wire->Ver (make-hasheq))
-      (for ([(w idx) (in-hash Wire->Idx)])
-        (printf "\t%w_~a_~a = extractvalue ~a %WIRES~a, ~a\n"
-                idx 0 WType 0 idx)
-        (hash-set! Wire->Ver w 0))
+        (printf "\t; Load\n")
+        (printf "\t%WIRES0 = load ~a, ~a* @WIRES, align 1\n" WType WType)
+        (define Wire->Ver (make-hasheq))
+        (for ([(w idx) (in-hash Wire->Idx)])
+          (printf "\t%w_~a_~a = extractvalue ~a %WIRES~a, ~a\n"
+                  idx 0 WType 0 idx)
+          (hash-set! Wire->Ver w 0))
 
 
-      (printf "\t; Work\n")
-      (define cur-ver 0)
-      (tree-walk
-       sn
-       (match-lambda
-         [(nand a b o)
-          (define last-ver cur-ver)
-          (set! cur-ver (add1 cur-ver))
-          (define next-ver cur-ver)
+        (printf "\t; Work\n")
+        (define cur-ver 0)
+        (tree-walk
+         sn
+         (match-lambda
+           [(nand a b o)
+            (define last-ver cur-ver)
+            (set! cur-ver (add1 cur-ver))
+            (define next-ver cur-ver)
 
-          (define a-idx (hash-ref Wire->Idx a))
-          (define b-idx (hash-ref Wire->Idx b))
-          (define o-idx (hash-ref Wire->Idx o))
-          (define a-ver (hash-ref Wire->Ver a))
-          (define b-ver (hash-ref Wire->Ver b))
+            (define a-idx (hash-ref Wire->Idx a))
+            (define b-idx (hash-ref Wire->Idx b))
+            (define o-idx (hash-ref Wire->Idx o))
+            (define a-ver (hash-ref Wire->Ver a))
+            (define b-ver (hash-ref Wire->Ver b))
 
-          (printf "\t%w_~a_~an = and i1 %w_~a_~a, %w_~a_~a\n"
-                  o-idx next-ver a-idx a-ver b-idx b-ver)
-          (printf "\t%w_~a_~a = xor i1 %w_~a_~an, 1\n"
-                  o-idx next-ver o-idx next-ver)
+            (printf "\t%w_~a_~an = and i1 %w_~a_~a, %w_~a_~a\n"
+                    o-idx next-ver a-idx a-ver b-idx b-ver)
+            (printf "\t%w_~a_~a = xor i1 %w_~a_~an, 1\n"
+                    o-idx next-ver o-idx next-ver)
 
-          (hash-set! Wire->Ver o next-ver)]))
+            (hash-set! Wire->Ver o next-ver)]))
 
-      (printf "\t; Store\n")
-      (define last-wires-ver 0)
-      (for ([(w idx) (in-hash Wire->Idx)]
-            [next-ver (in-naturals 1)])
-        (define w-last-ver (hash-ref Wire->Ver w))
-        (printf "\t%WIRES~a = insertvalue ~a %WIRES~a, i1 %w_~a_~a, ~a\n"
-                next-ver WType last-wires-ver idx w-last-ver idx)
-        (set! last-wires-ver next-ver))
-      (printf "\tstore ~a %WIRES~a, ~a* @WIRES, align 1\n" WType last-wires-ver WType)
+        (printf "\t; Store\n")
+        (define last-wires-ver 0)
+        (for ([(w idx) (in-hash Wire->Idx)]
+              [next-ver (in-naturals 1)])
+          (define w-last-ver (hash-ref Wire->Ver w))
+          (printf "\t%WIRES~a = insertvalue ~a %WIRES~a, i1 %w_~a_~a, ~a\n"
+                  next-ver WType last-wires-ver idx w-last-ver idx)
+          (set! last-wires-ver next-ver))
+        (printf "\tstore ~a %WIRES~a, ~a* @WIRES, align 1\n" WType last-wires-ver WType)
 
-      (printf "\tret void\n")
-      (printf "}\n")))
+        (printf "\tret void\n")
+        (printf "}\n")))
 
-  ;; xxx compile directly to assembly
+    ;; xxx compile directly to assembly
 
-  )
+    ))
 
 ;; Exhaustive testing
 (module+ test
@@ -999,10 +1011,10 @@
                    (negative? (unsigned->signed N Ans))
                    (zero? Ans))))))
 
-(define (MIC-1 μCodeLength Microcode
-               Registers MPC-out
-               Read? Write?
-               MAR MBR)
+(define (MIC1 μCodeLength Microcode
+              Registers MPC-out
+              Read? Write?
+              MAR MBR)
   (define μAddrSpace (ROM-AddrSpace Microcode))
   (define WordBits (length MBR))
   (define RegisterCount (length Registers))
@@ -1028,7 +1040,6 @@
     [A-latch-out WordBits] [B-latch-out WordBits]
     [Amux-out WordBits] [ALU-out WordBits]
     Shifter-Left? Shifter-Right? Write-C?)
-  (define Shifter-out C-Bus)
   (Net ()
        (Clock (list Clock:1 Clock:2 Clock:3 Clock:4))
        (ROM Microcode MPC-out pre-MIR)
@@ -1052,9 +1063,9 @@
        (MicroSeqLogic N Z MIR:COND MicroSeqLogic-out)
        (Mux/N MPC-Inc-out MIR:ADDR MicroSeqLogic-out Mmux-out)
        (Decoder/N MIR:SH (list GROUND Shifter-Right? Shifter-Left? GROUND))
-       (Shifter/N Shifter-Left? Shifter-Right? ALU-out Shifter-out)
+       (Shifter/N Shifter-Left? Shifter-Right? ALU-out C-Bus)
        (And MIR:MBR Clock:4 MBR?)
-       (Latch/N MBR? Shifter-out MBR)
+       (Latch/N MBR? C-Bus MBR)
        (And Clock:4 MIR:ENC Write-C?)
        (RegisterSet Write-C? C-Bus Csel Registers)
        (Latch/N Clock:4 Mmux-out MPC-out)
@@ -1075,15 +1086,17 @@
 
   Mem)
 
-(define (simulate-MIC-1 MicrocodeImage MemoryImage InitialPC InitialSP)
+(define (make-MIC1-simulator
+         MicrocodeImage MemoryImage InitialPC InitialSP)
   (define WordSize 16)
   (define RegisterCount 16)
   (define MicrocodeSize 256)
   (define MicrocodeWordSize 32)
 
+  (define MicrocodeVec
+    (image->memory MicrocodeSize MicrocodeWordSize MicrocodeImage))
   (define Microcode
-    (vector->list
-     (image->memory MicrocodeSize MicrocodeWordSize MicrocodeImage)))
+    (vector->list MicrocodeVec))
 
   (define-wires
     [MPC (ROM-AddrSpace Microcode)]
@@ -1092,17 +1105,18 @@
     [MBR WordSize])
   (define Registers
     (build-list RegisterCount (λ (i) (Bundle WordSize))))
-  (define RegisterMap
+  (define WireMap
     (for/hasheq ([label
                   (in-list
-                   '(PC AC SP IR TIR Z P1 N1 AMASK SMASK A B C D E F))]
-                 [reg (in-list Registers)])
+                   '(MPC Read? Write? MAR MBR
+                         PC AC SP IR TIR Z P1 N1 AMASK SMASK A B C D E F))]
+                 [reg (in-list (list* MPC Read? Write? MAR MBR Registers))])
       (values label reg)))
 
   (define (register-set! r n)
-    (write-number! (hash-ref RegisterMap r) n))
+    (write-number! (hash-ref WireMap r) n))
   (define (register-read r)
-    (read-number (hash-ref RegisterMap r)))
+    (read-number (hash-ref WireMap r)))
 
   (register-set! 'PC InitialPC)
   (register-set! 'SP InitialSP)
@@ -1113,12 +1127,12 @@
   (register-set! 'SMASK #b0000000011111111)
 
   (define the-mic1
-    (MIC-1 MicrocodeWordSize Microcode
-           Registers MPC
-           Read? Write?
-           MAR MBR))
+    (MIC1 MicrocodeWordSize Microcode
+          Registers MPC
+          Read? Write?
+          MAR MBR))
 
-  (analyze #:label "MIC-1" the-mic1)
+  (analyze #:label "MIC1" the-mic1)
 
   (define Memory
     ;; Image is smaller because there are 4 bits in instructions. This
@@ -1126,34 +1140,47 @@
     ;; to be higher, etc.
     (image->memory (expt 2 (- WordSize 4)) WordSize MemoryImage))
 
+  (simulator
+   MicrocodeVec Memory register-set! register-read
+   (λ (inform!)
+     (let loop ([readc 0] [writec 0])
+       (simulate! the-mic1)
+       (inform!)
+       (define next-readc (if (bread Read?) (add1 readc) 0))
+       (define next-writec (if (bread Write?) (add1 writec) 0))
+       (when (> next-writec 4)
+         (vector-set! Memory (read-number MAR) (read-number MBR))
+         (set! next-writec 0))
+       (when (> next-readc 4)
+         (write-number! MBR (vector-ref Memory (read-number MAR)))
+         (set! next-readc 0))
+       (loop next-readc next-writec)))))
+
+(struct simulator (mc mem rs rr start))
+
+(define (debug-MIC1 s)
+  (match-define (simulator Microcode Memory r! r start!) s)
   (let/ec esc
-    (let loop ([readc 0] [writec 0] [cycle 0] [subcycle 0])
-      (simulate! the-mic1)
-      (printf "~a.~a MPC=~a PC=~a AC=~a IR=~a RD=~a(~a) WR=~a(~a) MAR=~a MBR=~a\n"
+    (define cycle 0)
+    (define subcycle 0)
+    (define (inform!)
+      (printf "~a.~a MPC=~a PC=~a AC=~a IR=~a RD=~a WR=~a MAR=~a MBR=~a\n"
               cycle subcycle
-              (read-number MPC)
-              (register-read 'PC) (register-read 'AC) (register-read 'IR)
-              (if (bread Read?) 1 0) readc
-              (if (bread Write?) 1 0) writec
-              (read-number MAR)
-              (read-number MBR))
+              (r 'MPC) (r 'PC) (r 'AC) (r 'IR)
+              (r 'Read?) (r 'Write?)
+              (r 'MAR) (r 'MBR))
       ;; xxx still not working, this is for testing
       (read-char)
-      (define next-readc (if (bread Read?) (add1 readc) 0))
-      (define next-writec (if (bread Write?) (add1 writec) 0))
-      (when (and (bread Read?) (bread Write?))
+
+      (when (and (= (r 'Read?) 1) (= (r 'Write?) 1))
         ;; xxx run debugger
         (eprintf "Exiting simulator...")
         (esc))
-      (when (> next-writec 4)
-        (vector-set! Memory (read-number MAR) (read-number MBR))
-        (set! next-writec 0))
-      (when (> next-readc 4)
-        (write-number! MBR (vector-ref Memory (read-number MAR)))
-        (set! next-readc 0))
-      (loop next-readc next-writec
-            (if (= subcycle 3) (add1 cycle) cycle)
-            (modulo (add1 subcycle) 4)))))
+
+      (set! subcycle (modulo (add1 subcycle) 4))
+      (set! cycle (if (= subcycle 0) (add1 cycle) cycle)))
+
+    (start! inform!)))
 
 ;; xxx need to write automated testing for this with custom microcode
 ;; to make sure each thing works.
@@ -1200,7 +1227,11 @@
    [("--sp") sp-str "Initial Stack Pointer (default: 1024)"
     (set! InitialSP (string->number sp-str))]
    #:args (microcode-path memory-image-path)
-   (simulate-MIC-1 (file->image microcode-path)
-                   (file->image memory-image-path)
-                   InitialPC
-                   InitialSP)))
+
+   (define start!
+     (make-MIC1-simulator
+      (file->image microcode-path)
+      (file->image memory-image-path)
+      InitialPC
+      InitialSP))
+   (debug-MIC1 start!)))
