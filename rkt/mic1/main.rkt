@@ -1086,6 +1086,10 @@
 
   Mem)
 
+(define simulator-vars
+  '(MPC Read? Write? MAR MBR
+        PC AC SP IR TIR Z P1 N1 AMASK SMASK A B C D E F))
+
 (define (make-MIC1-simulator
          MicrocodeImage MemoryImage InitialPC InitialSP)
   (define WordSize 16)
@@ -1107,9 +1111,7 @@
     (build-list RegisterCount (λ (i) (Bundle WordSize))))
   (define WireMap
     (for/hasheq ([label
-                  (in-list
-                   '(MPC Read? Write? MAR MBR
-                         PC AC SP IR TIR Z P1 N1 AMASK SMASK A B C D E F))]
+                  (in-list simulator-vars)]
                  [reg (in-list (list* MPC Read? Write? MAR MBR Registers))])
       (values label reg)))
 
@@ -1157,6 +1159,108 @@
        (loop next-readc next-writec)))))
 
 (struct simulator (mc mem rs rr start))
+
+(define (μencode ss)
+  (match-define (list AMUX COND ALU SH MBR MAR RD WR ENC C B A ADDR) ss)
+  (define register
+    (match-lambda
+      ['PC 0] ['AC 1] ['SP 2] ['IR 3] ['TIR 4] ['Z 5] ['P1 6] ['N1 7]
+      ['AMASK 8] ['SMASK 9] ['A 10] ['B 11] ['C 12] ['D 13] ['E 14] ['F 15]))
+  (list (match AMUX
+          ['A 0]
+          ['MBR 1])
+        (match COND
+          ['NJ 0]
+          ['JN 1]
+          ['JZ 2]
+          ['J! 3])
+        (match ALU
+          ['+ 0]
+          ['& 1]
+          ['Id 2]
+          ['! 3])
+        (match SH
+          ['NS 0]
+          ['RS 1]
+          ['LS 2])
+        (match MBR
+          ['N 0]
+          ['MBR 1])
+        (match MAR
+          ['N 0]
+          ['MAR 1])
+        (match RD
+          ['N 0]
+          ['RD 1])
+        (match WR
+          ['N 0]
+          ['WR 1])
+        (match ENC
+          ['N 0]
+          ['ENC 1])
+        (register C)
+        (register B)
+        (register A)
+        ADDR))
+
+(define (μwrite ns)
+  (define-wires
+    [MIR 32]
+    MIR:AMUX [MIR:COND 2] [MIR:ALU 2] [MIR:SH 2]
+    MIR:MBR MIR:MAR MIR:RD MIR:WR MIR:ENC
+    [MIR:C 4] [MIR:B 4] [MIR:A 4]
+    [MIR:ADDR 8])
+  (define fields
+    (list MIR:AMUX MIR:COND MIR:ALU MIR:SH
+          MIR:MBR MIR:MAR MIR:RD MIR:WR
+          MIR:ENC MIR:C MIR:B MIR:A MIR:ADDR))
+  (for-each write-number! fields ns)
+  (simulate! (Cut/N MIR (reverse fields)))
+  (read-number MIR))
+
+(module+ test
+  (define (chk-mic1μ μinst-sym before after)
+    (define μinst-ns (μencode μinst-sym))
+    (define μinst (μwrite μinst-ns))
+    (define s (make-MIC1-simulator (list μinst) empty 0 1024))
+    (match-define (simulator Microcode Memory r! r start!) s)
+
+    (for ([(rn n) (in-hash before)])
+      (r! rn n))
+    
+    (define init
+      (for/hasheq ([sv (in-list simulator-vars)])
+        (values sv (r sv))))
+
+    (let/ec esc
+      (define c 0)
+      (define (inform!)
+        (set! c (add1 c))
+        (when (= c 4)
+          (esc)))
+      (start! inform!))
+
+    (with-chk (['μinst-sym μinst-sym]
+               ['before before])
+      (for ([(sv svb) (in-hash init)]
+            #:unless (hash-has-key? after sv))
+        (with-chk (['sv sv]
+                   ['svb svb])
+          (chk (r sv) svb)))
+      (for ([(rn n) (in-hash after)])
+        (with-chk (['rn rn])
+          (chk (r rn) n)))))
+
+  ;; xxx make a standard before assignment with each register being
+  ;; something different so I can check how things are being assigned
+  
+  ;; xxx add more tests
+  (chk-mic1μ (list 'A 'J! '+ 'NS 'N 'N 'N 'N 'N 'PC 'PC 'PC 8)
+             (hasheq)
+             (hasheq 'MPC 8))
+  (chk-mic1μ (list 'A 'NJ '+ 'NS 'N 'N 'N 'N 'ENC 'PC 'PC 'PC 0)
+             (hasheq 'PC 1)
+             (hasheq 'PC 2 'MPC 1)))
 
 (define (debug-MIC1 s)
   (match-define (simulator Microcode Memory r! r start!) s)
