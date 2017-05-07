@@ -19,6 +19,8 @@
      (fprintf p "#<wire: ~a>" (wire-debug w)))])
 
 (struct nand (a b o))
+(define DEBUG? (make-parameter #f))
+(struct debug (f))
 
 ;; Constructors
 (define Mt null)
@@ -75,6 +77,7 @@
   (tree-walk
    sn
    (match-lambda
+     [(debug f) (when (DEBUG?) (f))]
      [(nand a b o)
       (bwrite! o (not (and (bread a) (bread b))))])))
 
@@ -120,6 +123,7 @@
   (tree-walk
    sn
    (match-lambda
+     [(debug f) (void)]
      [(nand a b o)
       (set! Gates (add1 Gates))
       (for ([x (in-list (list a b o))])
@@ -134,7 +138,7 @@
   (eprintf "~a has ~a NAND gates and ~a wires\n"
            label Gates (hash-count WireUses))
 
-  ;; xxx move to other file/function
+  ;; xxx move compiler to another file
   (when compile?
     (with-output-to-file (path-add-extension label #".c")
       #:exists 'replace
@@ -152,6 +156,7 @@
         (tree-walk
          sn
          (match-lambda
+           [(debug f) (void)]
            [(nand a b o)
             (printf "\t~a = !(~a & ~a);\n"
                     (hash-ref Wire->Id o)
@@ -169,7 +174,7 @@
               [i (in-naturals)])
           (hash-set! Wire->Idx w i))
         (define WC (hash-count Wire->Idx))
-        ;; xxx maybe divide into word-sized things
+        ;; xxx maybe it would be more efficient to divide into word sized things
         (define WType (format "[~a x i1]" WC))
 
         (printf "; Wires\n")
@@ -192,6 +197,7 @@
         (tree-walk
          sn
          (match-lambda
+           [(debug f) (void)]
            [(nand a b o)
             (define last-ver cur-ver)
             (set! cur-ver (add1 cur-ver))
@@ -954,20 +960,21 @@
        (bits->number '(#t #t #f #t)) 11
        (bits->number '(#t #t #t #t)) 15))
 
-(define (IsNegative? In Bit)
-  (Id (last In) Bit))
+(define (unsigned->signed bits x)
+  (define unbs (number->bits bits x))
+  (match-define (cons last-bit rfirst-bits) (reverse unbs))
+  (define first-bits (reverse rfirst-bits))
+  (+ (* -1 (if last-bit 1 0) (expt 2 (sub1 bits)))
+     (bits->number first-bits)))
 (module+ test
-  (define (unsigned->signed bits x)
-    (define unbs (number->bits bits x))
-    (match-define (cons last-bit rfirst-bits) (reverse unbs))
-    (define first-bits (reverse rfirst-bits))
-    (+ (* -1 (if last-bit 1 0) (expt 2 (sub1 bits)))
-       (bits->number first-bits)))
   (chk (unsigned->signed 4 #b0001)  1
        (unsigned->signed 4 #b0101)  5
        (unsigned->signed 4 #b1011) -5
-       (unsigned->signed 4 #b1111) -1)
+       (unsigned->signed 4 #b1111) -1))
 
+(define (IsNegative? In Bit)
+  (Id (last In) Bit))
+(module+ test
   (define-chk-num chk-isneg
     #:N N #:in ([In N]) #:out (Bit)
     #:circuit IsNegative? #:exhaust 5
@@ -1046,9 +1053,14 @@
        (Latch/N Clock:1 pre-MIR MIR)
        (Cut/N MIR
               (reverse
-               (list MIR:AMUX MIR:COND MIR:ALU MIR:SH
-                     MIR:MBR MIR:MAR MIR:RD MIR:WR
-                     MIR:ENC MIR:C MIR:B MIR:A MIR:ADDR)))
+               (flatten
+                (list MIR:AMUX MIR:COND MIR:ALU MIR:SH
+                      MIR:MBR MIR:MAR MIR:RD MIR:WR
+                      MIR:ENC MIR:C MIR:B MIR:A MIR:ADDR))))
+       (debug-wires "post-Cut"
+                    MIR:AMUX MIR:COND MIR:ALU MIR:SH
+                    MIR:MBR MIR:MAR MIR:RD MIR:WR
+                    MIR:ENC MIR:C MIR:B MIR:A MIR:ADDR)
        (Decoder/N MIR:A Asel)
        (Decoder/N MIR:B Bsel)
        (Decoder/N MIR:C Csel)
@@ -1058,8 +1070,9 @@
        (Latch/N Clock:2 B-Bus B-latch-out)
        (And MIR:MAR Clock:3 MAR?)
        (Latch/N MAR? B-latch-out MAR)
-       (Mux/N MBR A-latch-out MIR:AMUX Amux-out)
+       (Mux/N A-latch-out MBR MIR:AMUX Amux-out)
        (ALU Amux-out B-Bus MIR:ALU ALU-out N Z)
+       (debug-wires "post ALU" Amux-out B-Bus MIR:ALU ALU-out N Z)
        (MicroSeqLogic N Z MIR:COND MicroSeqLogic-out)
        (Mux/N MPC-Inc-out MIR:ADDR MicroSeqLogic-out Mmux-out)
        (Decoder/N MIR:SH (list GROUND Shifter-Right? Shifter-Left? GROUND))
@@ -1070,6 +1083,9 @@
        (RegisterSet Write-C? C-Bus Csel Registers)
        (Latch/N Clock:4 Mmux-out MPC-out)
        (Increment/N MPC-out MPC-Inc-carry MPC-Inc-out)))
+
+(define-syntax-rule (debug-wires lab w ...)
+  (debug (λ () (printf "~a: ~v\n" lab (list (cons 'w (read-number w)) ...)))))
 
 (define (image->memory MemSize WordSize Image)
   (define Mem (make-vector MemSize 0))
@@ -1086,9 +1102,10 @@
 
   Mem)
 
+(define simulator-registers
+  '(PC AC SP IR TIR Z P1 N1 AMASK SMASK A B C D E F))
 (define simulator-vars
-  '(MPC Read? Write? MAR MBR
-        PC AC SP IR TIR Z P1 N1 AMASK SMASK A B C D E F))
+  (append '(MPC Read? Write? MAR MBR) simulator-registers))
 
 (define (make-MIC1-simulator
          MicrocodeImage MemoryImage InitialPC InitialSP)
@@ -1097,10 +1114,14 @@
   (define MicrocodeSize 256)
   (define MicrocodeWordSize 32)
 
+  (when (DEBUG?)
+    (printf "Img ~e\n" MicrocodeImage))
   (define MicrocodeVec
     (image->memory MicrocodeSize MicrocodeWordSize MicrocodeImage))
   (define Microcode
     (vector->list MicrocodeVec))
+  (when (DEBUG?)
+    (printf "Code ~e\n" Microcode))
 
   (define-wires
     [MPC (ROM-AddrSpace Microcode)]
@@ -1148,6 +1169,7 @@
      (let loop ([readc 0] [writec 0])
        (simulate! the-mic1)
        (inform!)
+       ;; xxx implement IO
        (define next-readc (if (bread Read?) (add1 readc) 0))
        (define next-writec (if (bread Write?) (add1 writec) 0))
        (when (> next-writec 4)
@@ -1177,26 +1199,26 @@
         (match ALU
           ['+ 0]
           ['& 1]
-          ['Id 2]
+          ['A 2]
           ['! 3])
         (match SH
           ['NS 0]
           ['RS 1]
           ['LS 2])
         (match MBR
-          ['N 0]
+          ['NB 0]
           ['MBR 1])
         (match MAR
-          ['N 0]
+          ['NA 0]
           ['MAR 1])
         (match RD
-          ['N 0]
+          ['NR 0]
           ['RD 1])
         (match WR
-          ['N 0]
+          ['NW 0]
           ['WR 1])
         (match ENC
-          ['N 0]
+          ['NC 0]
           ['ENC 1])
         (register C)
         (register B)
@@ -1215,19 +1237,26 @@
           MIR:MBR MIR:MAR MIR:RD MIR:WR
           MIR:ENC MIR:C MIR:B MIR:A MIR:ADDR))
   (for-each write-number! fields ns)
-  (simulate! (Cut/N MIR (reverse fields)))
+  (simulate! (Cut/N (reverse (flatten fields)) MIR))
   (read-number MIR))
 
 (module+ test
+  (define standard-reg-values
+    (for/hasheq ([rn (in-list '(PC AC SP IR TIR A B C D E F))]
+                 [v (in-naturals 10)])
+      (values rn v)))
   (define (chk-mic1μ μinst-sym before after)
     (define μinst-ns (μencode μinst-sym))
     (define μinst (μwrite μinst-ns))
     (define s (make-MIC1-simulator (list μinst) empty 0 1024))
     (match-define (simulator Microcode Memory r! r start!) s)
 
+    (for ([(rn n) (in-hash standard-reg-values)])
+      (r! rn n))
+
     (for ([(rn n) (in-hash before)])
       (r! rn n))
-    
+
     (define init
       (for/hasheq ([sv (in-list simulator-vars)])
         (values sv (r sv))))
@@ -1242,52 +1271,160 @@
 
     (with-chk (['μinst-sym μinst-sym]
                ['before before])
+      ;; Everything not in after stayed the same
       (for ([(sv svb) (in-hash init)]
             #:unless (hash-has-key? after sv))
         (with-chk (['sv sv]
                    ['svb svb])
           (chk (r sv) svb)))
+      ;; Everything in after got the new value
       (for ([(rn n) (in-hash after)])
         (with-chk (['rn rn])
           (chk (r rn) n)))))
 
-  ;; xxx make a standard before assignment with each register being
-  ;; something different so I can check how things are being assigned
-  
-  ;; xxx add more tests
-  (chk-mic1μ (list 'A 'J! '+ 'NS 'N 'N 'N 'N 'N 'PC 'PC 'PC 8)
-             (hasheq)
-             (hasheq 'MPC 8))
-  (chk-mic1μ (list 'A 'NJ '+ 'NS 'N 'N 'N 'N 'ENC 'PC 'PC 'PC 0)
-             (hasheq 'PC 1)
-             (hasheq 'PC 2 'MPC 1)))
+  ;; Doesn't require the ALU to work correctly
+  (with-chk (['mode 'RD])
+    (chk-mic1μ (list 'A 'NJ '+ 'NS 'NB 'NA 'RD 'NW 'NC 'PC 'PC 'PC 0)
+               (hasheq 'Read? 0)
+               (hasheq 'MPC 1 'Read? 1)))
+  (with-chk (['mode 'WR])
+    (chk-mic1μ (list 'A 'NJ '+ 'NS 'NB 'NA 'NR 'WR 'NC 'PC 'PC 'PC 0)
+               (hasheq 'Write? 0)
+               (hasheq 'MPC 1 'Write? 1)))
+
+  ;; Test MAR assignment (pre ALU)
+  (with-chk (['mode 'MAR])
+    (chk-mic1μ (list 'A 'NJ '+ 'NS 'NB 'MAR 'NR 'NW 'NC 'PC 'A 'PC 0)
+               (hasheq 'A 88 'PC 1)
+               (hasheq 'MPC 1 'MAR 88)))
+
+  ;; Test basic ALU operation
+  (with-chk (['mode 'ALU])
+    (chk-mic1μ (list 'A 'NJ '+ 'NS 'NB 'NA 'NR 'NW 'ENC 'C 'B 'A 0)
+               (hasheq 'C 0 'B 1 'A 3)
+               (hasheq 'MPC 1 'C 4))
+    (chk-mic1μ (list 'A 'NJ '& 'NS 'NB 'NA 'NR 'NW 'ENC 'C 'B 'A 0)
+               (hasheq 'C 0 'B 1 'A 3)
+               (hasheq 'MPC 1 'C 1))
+    (chk-mic1μ (list 'A 'NJ 'A 'NS 'NB 'NA 'NR 'NW 'ENC 'C 'B 'A 0)
+               (hasheq 'C 0 'B 1 'A 3)
+               (hasheq 'MPC 1 'C 3))
+    (chk-mic1μ (list 'A 'NJ '! 'NS 'NB 'NA 'NR 'NW 'ENC 'C 'B 'A 0)
+               (hasheq 'C 0 'B 1 'A 3)
+               (hasheq 'MPC 1 'C (modulo (bitwise-not 3) (expt 2 16)))))
+
+  ;; Vary A side input
+  (with-chk (['mode 'AMUX])
+    ;; PC = Z(0) + A(-1)
+    (chk-mic1μ (list 'A 'NJ '+ 'NS 'NB 'NA 'NR 'NW 'ENC 'PC 'Z 'N1 0)
+               (hasheq 'MBR 30)
+               (hasheq 'MPC 1 'PC (modulo -1 (expt 2 16))))
+
+    ;; PC = Z(0) + MBR(30)
+    (chk-mic1μ (list 'MBR 'NJ '+ 'NS 'NB 'NA 'NR 'NW 'ENC 'PC 'Z 'N1 0)
+               (hasheq 'MBR 30)
+               (hasheq 'MPC 1 'PC 30)))
+
+  ;; Test shifting of ALU output
+  (with-chk (['mode 'SH])
+    ;; C = B(1) + A(1)
+    (chk-mic1μ (list 'A 'NJ '+ 'NS 'NB 'NA 'NR 'NW 'ENC 'C 'B 'A 0)
+               (hasheq 'C 0 'B 1 'A 1)
+               (hasheq 'MPC 1 'C 2))
+    ;; C = B(1) + A(1) >> 1
+    (chk-mic1μ (list 'A 'NJ '+ 'RS 'NB 'NA 'NR 'NW 'ENC 'C 'B 'A 0)
+               (hasheq 'C 0 'B 1 'A 1)
+               (hasheq 'MPC 1 'C 1))
+    ;; C = B(1) + A(1) << 1
+    (chk-mic1μ (list 'A 'NJ '+ 'LS 'NB 'NA 'NR 'NW 'ENC 'C 'B 'A 0)
+               (hasheq 'C 0 'B 1 'A 1)
+               (hasheq 'MPC 1 'C 4)))
+
+  ;; Test where to assign ALU output
+  (with-chk (['mode 'MBR])
+    ;; MBR = PC + A
+    (chk-mic1μ (list 'A 'NJ '+ 'NS 'MBR 'NA 'NR 'NW 'NC 'PC 'A 'PC 0)
+               (hasheq 'PC 1 'A 88)
+               (hasheq 'MPC 1 'MBR 89)))
+
+  (with-chk (['mode 'REGS])
+    (define (do-regs-tests Cs Bs As)
+      (for* ([C (in-list Cs)]
+             [B (in-list Bs)]
+             [A (in-list As)]
+             #:unless (eq? C B)
+             #:unless (eq? C A)
+             #:unless (eq? A B))
+        (chk-mic1μ (list 'A 'NJ '+ 'NS 'NB 'NA 'NR 'NW 'ENC C B A 0)
+                   (hasheq C 100 B 101 A 102)
+                   (hasheq 'MPC 1 C 203))))
+    (do-regs-tests simulator-registers '(A C) '(B D))
+    (do-regs-tests '(A C) simulator-registers '(B D))
+    (do-regs-tests '(A C) '(B D) simulator-registers))
+
+  ;; Testing conditional output of ALU independent of destination
+  (with-chk (['mode 'COND])
+    ;; Don't jump with addr, still goes to next
+    (chk-mic1μ (list 'A 'NJ '+ 'NS 'NB 'NA 'NR 'NW 'NC 'PC 'PC 'PC 8)
+               (hasheq)
+               (hasheq 'MPC 1))
+    ;; Adding 0 + (-1) during JN goes to 8
+    (chk-mic1μ (list 'A 'JN '+ 'NS 'NB 'NA 'NR 'NW 'NC 'PC 'Z 'N1 8)
+               (hasheq)
+               (hasheq 'MPC 8))
+    ;; Adding 0 + (+1) during JN goes to 1
+    (chk-mic1μ (list 'A 'JN '+ 'NS 'NB 'NA 'NR 'NW 'NC 'PC 'Z 'P1 8)
+               (hasheq)
+               (hasheq 'MPC 1))
+    ;; Adding 0 + 0 during JZ goes to 8
+    (chk-mic1μ (list 'A 'JZ '+ 'NS 'NB 'NA 'NR 'NW 'NC 'PC 'Z 'Z 8)
+               (hasheq)
+               (hasheq 'MPC 8))
+    ;; Adding 0 + (+1) during JZ goes to 1
+    (chk-mic1μ (list 'A 'JZ '+ 'NS 'NB 'NA 'NR 'NW 'NC 'PC 'Z 'P1 8)
+               (hasheq)
+               (hasheq 'MPC 1))
+    ;; Using J! always goes to 8
+    (chk-mic1μ (list 'A 'J! '+ 'NS 'NB 'NA 'NR 'NW 'NC 'PC 'PC 'PC 8)
+               (hasheq)
+               (hasheq 'MPC 8))))
+
+;; xxx make a FSM/RTL version of the MIC1
 
 (define (debug-MIC1 s)
   (match-define (simulator Microcode Memory r! r start!) s)
   (let/ec esc
     (define cycle 0)
     (define subcycle 0)
-    (define (inform!)
-      (printf "~a.~a MPC=~a PC=~a AC=~a IR=~a RD=~a WR=~a MAR=~a MBR=~a\n"
-              cycle subcycle
-              (r 'MPC) (r 'PC) (r 'AC) (r 'IR)
-              (r 'Read?) (r 'Write?)
-              (r 'MAR) (r 'MBR))
-      ;; xxx still not working, this is for testing
-      (read-char)
 
+    (local-require racket/format)
+    (define (dump-state!)
+      (define LABELW 10)
+      (for ([rn (in-list simulator-vars)])
+        (define x (r rn))
+        (displayln
+         (~a (~a #:min-width LABELW rn) " : "
+             (~r x #:base 2 #:min-width 16 #:pad-string "0")
+             " , or "
+             (~r x #:min-width 6)
+             " or signed "
+             (~r (unsigned->signed 16 x) #:min-width 6 #:sign '++))))
+      (newline)
+      (displayln
+       (~a (~a #:min-width LABELW "Cycles") cycle)))
+
+    (define (inform!)
       (when (and (= (r 'Read?) 1) (= (r 'Write?) 1))
-        ;; xxx run debugger
-        (eprintf "Exiting simulator...")
+        (dump-state!)
+
+        ;; xxx implement debugger
+        (eprintf "Exiting simulator...\n")
         (esc))
 
       (set! subcycle (modulo (add1 subcycle) 4))
       (set! cycle (if (= subcycle 0) (add1 cycle) cycle)))
 
     (start! inform!)))
-
-;; xxx need to write automated testing for this with custom microcode
-;; to make sure each thing works.
 
 (define (file->image p)
   (local-require racket/file)
@@ -1306,6 +1443,9 @@
                     line col c)])))
     (define n (bits->number bits))
     n))
+
+;; xxx individual microinstructions work correctly, but programs are
+;; not running correctly.
 
 (module+ main
   (require racket/runtime-path
