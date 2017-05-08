@@ -1160,6 +1160,8 @@
     ;; to be higher, etc.
     (image->memory (expt 2 (- WordSize 4)) WordSize MemoryImage))
 
+  (define (12bit x) (modulo x (expt 2 12)))
+
   (simulator
    MicrocodeVec Memory register-set! register-read
    (λ (inform!)
@@ -1172,11 +1174,11 @@
          (eprintf "readc=~a writec=~a\n" next-readc next-writec))
        ;; xxx implement IO
        (when (> next-writec 4)
-         (vector-set! Memory (read-number MAR) (read-number MBR))
+         (vector-set! Memory (12bit (read-number MAR)) (read-number MBR))
          (set! next-writec 0))
        (when (> next-readc 4)
          (when (DEBUG?) (eprintf "Reading ~a\n" (read-number MAR)))
-         (write-number! MBR (vector-ref Memory (read-number MAR)))
+         (write-number! MBR (vector-ref Memory (12bit (read-number MAR))))
          (set! next-readc 0))
 
        (inform!)
@@ -1537,10 +1539,7 @@
    (cons (hasheq 'MPC 7 'MAR 4 'MBR 3 'Write? 1)
          (hasheq 0 0 1 1 2 1 3 2))
    (cons (hasheq 'MPC 8 'SP 5 'Write? 1)
-         (hasheq 0 0 1 1 2 1 3 2 4 3)))
-
-  ;; xxx jump ahead to the end?
-  )
+         (hasheq 0 0 1 1 2 1 3 2 4 3))))
 
 (define (debug-MIC1 s)
   (match-define (simulator Microcode Memory r! r start!) s)
