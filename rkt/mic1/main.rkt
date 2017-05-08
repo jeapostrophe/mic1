@@ -1057,10 +1057,7 @@
                 (list MIR:AMUX MIR:COND MIR:ALU MIR:SH
                       MIR:MBR MIR:MAR MIR:RD MIR:WR
                       MIR:ENC MIR:C MIR:B MIR:A MIR:ADDR))))
-       (debug-wires "post-Cut"
-                    MIR:AMUX MIR:COND MIR:ALU MIR:SH
-                    MIR:MBR MIR:MAR MIR:RD MIR:WR
-                    MIR:ENC MIR:C MIR:B MIR:A MIR:ADDR)
+
        (Decoder/N MIR:A Asel)
        (Decoder/N MIR:B Bsel)
        (Decoder/N MIR:C Csel)
@@ -1072,7 +1069,6 @@
        (Latch/N MAR? B-latch-out MAR)
        (Mux/N A-latch-out MBR MIR:AMUX Amux-out)
        (ALU Amux-out B-Bus MIR:ALU ALU-out N Z)
-       (debug-wires "post ALU" Amux-out B-Bus MIR:ALU ALU-out N Z)
        (MicroSeqLogic N Z MIR:COND MicroSeqLogic-out)
        (Mux/N MPC-Inc-out MIR:ADDR MicroSeqLogic-out Mmux-out)
        (Decoder/N MIR:SH (list GROUND Shifter-Right? Shifter-Left? GROUND))
@@ -1155,7 +1151,8 @@
           Read? Write?
           MAR MBR))
 
-  (analyze #:label "MIC1" the-mic1)
+  (when (DEBUG?)
+    (analyze #:label "MIC1" the-mic1))
 
   (define Memory
     ;; Image is smaller because there are 4 bits in instructions. This
@@ -1168,16 +1165,21 @@
    (λ (inform!)
      (let loop ([readc 0] [writec 0])
        (simulate! the-mic1)
-       (inform!)
-       ;; xxx implement IO
+
        (define next-readc (if (bread Read?) (add1 readc) 0))
        (define next-writec (if (bread Write?) (add1 writec) 0))
+       (when (DEBUG?)
+         (eprintf "readc=~a writec=~a\n" next-readc next-writec))
+       ;; xxx implement IO
        (when (> next-writec 4)
          (vector-set! Memory (read-number MAR) (read-number MBR))
          (set! next-writec 0))
        (when (> next-readc 4)
+         (when (DEBUG?) (eprintf "Reading ~a\n" (read-number MAR)))
          (write-number! MBR (vector-ref Memory (read-number MAR)))
          (set! next-readc 0))
+
+       (inform!)
        (loop next-readc next-writec)))))
 
 (struct simulator (mc mem rs rr start))
@@ -1245,10 +1247,11 @@
     (for/hasheq ([rn (in-list '(PC AC SP IR TIR A B C D E F))]
                  [v (in-naturals 10)])
       (values rn v)))
-  (define (chk-mic1μ μinst-sym before after)
-    (define μinst-ns (μencode μinst-sym))
-    (define μinst (μwrite μinst-ns))
-    (define s (make-MIC1-simulator (list μinst) empty 0 1024))
+
+  (define (chk-mic1μs μinst-syms mem before . afters)
+    (define μinst-ns (map μencode μinst-syms))
+    (define μinst (map μwrite μinst-ns))
+    (define s (make-MIC1-simulator μinst mem 0 1024))
     (match-define (simulator Microcode Memory r! r start!) s)
 
     (for ([(rn n) (in-hash standard-reg-values)])
@@ -1257,30 +1260,53 @@
     (for ([(rn n) (in-hash before)])
       (r! rn n))
 
-    (define init
+    (define (make-init)
       (for/hasheq ([sv (in-list simulator-vars)])
         (values sv (r sv))))
 
+
     (let/ec esc
+      (define afteri 0)
+      (define (run-next-test!)
+        (match-define (cons regs*mems more-afters) afters)
+        (set! afters more-afters)
+        (match-define (cons reg-after mem-after) regs*mems)
+        (define init (make-init))
+
+        (with-chk (['afteri afteri]
+                   ['μinst-syms μinst-syms]
+                   ['before before])
+          ;; Everything not in after stayed the same
+          (for ([(sv svb) (in-hash init)]
+                #:unless (hash-has-key? reg-after sv))
+            (with-chk (['sv sv]
+                       ['svb svb])
+              (chk (r sv) svb)))
+          ;; Everything in after got the new value
+          (for ([(rn n) (in-hash reg-after)])
+            (with-chk (['rn rn])
+              (chk (r rn) n)))
+          ;; Everything in memory has appropriate value
+          (for ([(memi n) (in-hash mem-after)])
+            (with-chk (['memi memi])
+              (chk (vector-ref Memory memi) n))))
+
+        (set! afteri (add1 afteri))
+
+        (when (empty? afters)
+          (esc)))
+
       (define c 0)
       (define (inform!)
         (set! c (add1 c))
         (when (= c 4)
-          (esc)))
-      (start! inform!))
+          (when (DEBUG?) (eprintf "Running tests\n"))
+          (run-next-test!)
+          (set! c 0)))
+      (start! inform!)))
 
-    (with-chk (['μinst-sym μinst-sym]
-               ['before before])
-      ;; Everything not in after stayed the same
-      (for ([(sv svb) (in-hash init)]
-            #:unless (hash-has-key? after sv))
-        (with-chk (['sv sv]
-                   ['svb svb])
-          (chk (r sv) svb)))
-      ;; Everything in after got the new value
-      (for ([(rn n) (in-hash after)])
-        (with-chk (['rn rn])
-          (chk (r rn) n)))))
+  (define (chk-mic1μ μinst-sym before after)
+    (chk-mic1μs (list μinst-sym) empty before (cons after (hasheq))))
 
   ;; Doesn't require the ALU to work correctly
   (with-chk (['mode 'RD])
@@ -1389,7 +1415,26 @@
                (hasheq)
                (hasheq 'MPC 8))))
 
-;; xxx make a FSM/RTL version of the MIC1
+(module+ test
+  #;(chk-mic1μs μinst-syms mem before (cons reg-after mem-after) ...)
+
+  ;; Test memory read
+  (chk-mic1μs (list (list 'A 'NJ '+ 'NS 'NB 'MAR 'RD 'NW 'NC 'PC 'A 'PC 0)
+                    (list 'A 'NJ '+ 'NS 'NB 'NA 'RD 'NW 'NC 'PC 'A 'PC 0))
+              (list 67 68)
+              (hasheq 'A 1 'PC 1)
+              (cons (hasheq 'MPC 1 'Read? 1 'MAR 1) (hasheq))
+              (cons (hasheq 'MPC 2 'Read? 1 'MBR 68) (hasheq)))
+
+  ;; Test memory write
+  (chk-mic1μs (list (list 'A 'NJ 'A 'NS 'MBR 'MAR 'NR 'WR 'NC 'PC 'A 'PC 0)
+                    (list 'A 'NJ '+ 'NS 'NB 'NA 'NR 'WR 'NC 'PC 'A 'PC 0))
+              (list 67 68)
+              (hasheq 'A 1 'PC 88)
+              (cons (hasheq 'MPC 1 'Write? 1 'MAR 1 'MBR 88) (hasheq 1 68))
+              (cons (hasheq 'MPC 2 'Write? 1) (hasheq 1 88)))
+  
+  )
 
 (define (debug-MIC1 s)
   (match-define (simulator Microcode Memory r! r start!) s)
@@ -1451,6 +1496,7 @@
   (require racket/runtime-path
            racket/cmdline)
 
+  ;; xxx move this to testing system
   (define-runtime-path standard-prom-path
     "../../examples/prom.dat")
 
