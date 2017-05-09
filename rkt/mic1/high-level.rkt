@@ -1,6 +1,8 @@
 #lang racket/base
 (require racket/match)
 
+;; xxx implement same api as low-level
+
 (struct μi (AMUX COND ALU SH MBR MAR RD WR ENC C B A ADDR) #:transparent)
 (define REGISTERS
   (list->vector '(PC AC SP IR TIR Z P1 N1 AMASK SMASK A B C D E F)))

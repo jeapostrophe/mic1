@@ -3,7 +3,8 @@
          racket/list
          racket/runtime-path
          "hdl.rkt"
-         "low-level.rkt")
+         "low-level.rkt"
+         "simulator.rkt")
 (module+ test
   (require chk))
 
@@ -21,50 +22,6 @@
     (vector-set! Mem i m))
 
   Mem)
-
-(define simulator-registers
-  '(PC AC SP IR TIR Z P1 N1 AMASK SMASK A B C D E F))
-(define simulator-vars
-  (append '(MPC Read? Write? MAR MBR) simulator-registers))
-
-(define WordSize 16)
-(define RegisterCount 16)
-(define MicrocodeSize 256)
-(define MicrocodeWordSize 32)
-
-(struct stepper (rr rs step!))
-(define (make-MIC1-step MicrocodeVec)
-  (define Microcode
-    (vector->list MicrocodeVec))
-
-  (define-wires
-    [MPC (ROM-AddrSpace Microcode)]
-    Read? Write?
-    [MAR WordSize]
-    [MBR WordSize])
-  (define Registers
-    (build-list RegisterCount (λ (i) (Bundle WordSize))))
-  (define WireMap
-    (for/hasheq ([label
-                  (in-list simulator-vars)]
-                 [reg (in-list (list* MPC Read? Write? MAR MBR Registers))])
-      (values label reg)))
-  (define (register-set! r n)
-    (write-number! (hash-ref WireMap r) n))
-  (define (register-read r)
-    (read-number (hash-ref WireMap r)))
-
-  (define the-mic1
-    (MIC1 MicrocodeWordSize Microcode
-          Registers MPC
-          Read? Write?
-          MAR MBR))
-
-  ;; XXX
-  #;(analyze #:label "MIC1" the-mic1)
-
-  (stepper register-read register-set!
-           (λ () (simulate! the-mic1))))
 
 (define (make-MIC1-simulator
          MicrocodeImage MemoryImage InitialPC InitialSP)

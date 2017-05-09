@@ -1,6 +1,7 @@
 #lang racket/base
 (require racket/match
-         "hdl.rkt")
+         "hdl.rkt"
+         "simulator.rkt")
 (module+ test
   (require chk
            (submod "hdl.rkt" test)))
@@ -122,4 +123,38 @@
        (Latch/N Clock:4 Mmux-out MPC-out)
        (Increment/N MPC-out MPC-Inc-carry MPC-Inc-out)))
 
-(provide MIC1)
+(define (make-MIC1-step MicrocodeVec)
+  (define Microcode
+    (vector->list MicrocodeVec))
+
+  (define-wires
+    [MPC (ROM-AddrSpace Microcode)]
+    Read? Write?
+    [MAR WordSize]
+    [MBR WordSize])
+  (define Registers
+    (build-list RegisterCount (λ (i) (Bundle WordSize))))
+  (define WireMap
+    (for/hasheq ([label
+                  (in-list simulator-vars)]
+                 [reg (in-list (list* MPC Read? Write? MAR MBR Registers))])
+      (values label reg)))
+  (define (register-set! r n)
+    (write-number! (hash-ref WireMap r) n))
+  (define (register-read r)
+    (read-number (hash-ref WireMap r)))
+
+  (define the-mic1
+    (MIC1 MicrocodeWordSize Microcode
+          Registers MPC
+          Read? Write?
+          MAR MBR))
+
+  ;; XXX
+  #;(analyze #:label "MIC1" the-mic1)
+
+  (stepper register-read register-set!
+           (λ () (simulate! the-mic1))))
+
+;; xxx contracts
+(provide make-MIC1-step)
