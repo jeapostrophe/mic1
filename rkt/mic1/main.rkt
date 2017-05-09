@@ -2,127 +2,10 @@
 (require racket/match
          racket/list
          racket/runtime-path
-         "hdl.rkt")
+         "hdl.rkt"
+         "low-level.rkt")
 (module+ test
-  (require chk
-           (submod "hdl.rkt" test)))
-
-(define (MicroSeqLogic N Z Code Out)
-  (Net (JumpOnN! JumpOnZ! NoJump JumpOnN JumpOnZ JumpAlways)
-       (Decoder/N Code (list NoJump JumpOnN JumpOnZ JumpAlways))
-       (And JumpOnN N JumpOnN!)
-       (And JumpOnZ Z JumpOnZ!)
-       (Or* (list JumpOnN! JumpOnZ! JumpAlways) Out)))
-(module+ test
-  (chk-tt MicroSeqLogic
-          (for*/list ([N (in-range 2)] [Z (in-range 2)]
-                      [C0 (in-range 2)] [C1 (in-range 2)])
-            (define Code (+ C0 (* 2 C1)))
-            (list (list N Z (list C0 C1))
-                  (list
-                   (if (or (and (= 1 N) (= Code 1))
-                           (and (= 1 Z) (= Code 2))
-                           (= Code 3))
-                     1
-                     0))))))
-
-(define (ALU A B Function-Select Out Negative? Zero?)
-  (define N (length A))
-  (unless (= N (length B))
-    (error 'ALU "B is wrong length"))
-  (unless (= N (length Out))
-    (error 'ALU "Out is wrong length"))
-  (unless (= 2 (length Function-Select))
-    (error 'ALU "Function Select is wrong length"))
-
-  (Net ([TheSum N] [TheAnd N] [NotA N] [Function-Selects 4])
-       (Adder/N A B FALSE GROUND TheSum)
-       (And/N A B TheAnd)
-       (Not/N A NotA)
-       (Decoder/N Function-Select Function-Selects)
-       (RegisterRead (list TheSum TheAnd A NotA) Function-Selects Out)
-       (IsZero? Out Zero?)
-       (IsNegative? Out Negative?)))
-(module+ test
-  (define-chk-num chk-alu
-    #:N N
-    #:in ([A N] [B N] [Function-Select 2])
-    #:out ([Out N] Negative? Zero?)
-    #:circuit ALU #:exhaust 5
-    #:check
-    (chk (vector Out Negative? Zero?)
-         (let* ([Ans-premod
-                 (match Function-Select
-                   [0 (+ A B)]
-                   [1 (bitwise-and A B)]
-                   [2 A]
-                   [3 (bitwise-not A)])]
-                [Ans
-                 (modulo Ans-premod (expt 2 N))])
-           (vector Ans
-                   (negative? (unsigned->signed N Ans))
-                   (zero? Ans))))))
-
-(define (MIC1 μCodeLength Microcode
-              Registers MPC-out
-              Read? Write?
-              MAR MBR)
-  (define μAddrSpace (ROM-AddrSpace Microcode))
-  (define WordBits (length MBR))
-  (define RegisterCount (length Registers))
-  (define RegisterBits (integer-length (sub1 RegisterCount)))
-
-  ;; Aliases
-  (define MIR:RD Read?)
-  (define MIR:WR Write?)
-  (define-wires
-    Clock:1 Clock:2 Clock:3 Clock:4
-    N Z MicroSeqLogic-out
-    [pre-MIR μCodeLength] [MIR μCodeLength]
-    MIR:AMUX [MIR:COND 2] [MIR:ALU 2] [MIR:SH 2]
-    MIR:MBR MBR? MIR:MAR MAR?
-    MIR:ENC
-    [MIR:C RegisterBits] [MIR:B RegisterBits] [MIR:A RegisterBits]
-    [MIR:ADDR μAddrSpace]
-    #;[MPC-out μAddrSpace] [Mmux-out μAddrSpace]
-    MPC-Inc-carry [MPC-Inc-out μAddrSpace]
-    [Asel RegisterCount] [Bsel RegisterCount] [Csel RegisterCount]
-
-    [A-Bus WordBits] [B-Bus WordBits] [C-Bus WordBits]
-    [A-latch-out WordBits] [B-latch-out WordBits]
-    [Amux-out WordBits] [ALU-out WordBits]
-    Shifter-Left? Shifter-Right? Write-C?)
-  (Net ()
-       (Clock (list Clock:1 Clock:2 Clock:3 Clock:4))
-       (ROM Microcode MPC-out pre-MIR)
-       (Latch/N Clock:1 pre-MIR MIR)
-       (Cut/N MIR
-              (reverse
-               (list MIR:AMUX MIR:COND MIR:ALU MIR:SH
-                     MIR:MBR MIR:MAR MIR:RD MIR:WR
-                     MIR:ENC MIR:C MIR:B MIR:A MIR:ADDR)))
-
-       (Decoder/N MIR:A Asel)
-       (Decoder/N MIR:B Bsel)
-       (Decoder/N MIR:C Csel)
-       (RegisterRead Registers Asel A-Bus)
-       (RegisterRead Registers Bsel B-Bus)
-       (Latch/N Clock:2 A-Bus A-latch-out)
-       (Latch/N Clock:2 B-Bus B-latch-out)
-       (And MIR:MAR Clock:3 MAR?)
-       (Latch/N MAR? B-latch-out MAR)
-       (Mux/N A-latch-out MBR MIR:AMUX Amux-out)
-       (ALU Amux-out B-Bus MIR:ALU ALU-out N Z)
-       (MicroSeqLogic N Z MIR:COND MicroSeqLogic-out)
-       (Mux/N MPC-Inc-out MIR:ADDR MicroSeqLogic-out Mmux-out)
-       (Decoder/N MIR:SH (list GROUND Shifter-Right? Shifter-Left? GROUND))
-       (Shifter/N Shifter-Left? Shifter-Right? ALU-out C-Bus)
-       (And MIR:MBR Clock:4 MBR?)
-       (Latch/N MBR? C-Bus MBR)
-       (And Clock:4 MIR:ENC Write-C?)
-       (RegisterSet Write-C? C-Bus Csel Registers)
-       (Latch/N Clock:4 Mmux-out MPC-out)
-       (Increment/N MPC-out MPC-Inc-carry MPC-Inc-out)))
+  (require chk))
 
 (define (image->memory MemSize WordSize Image)
   (define Mem (make-vector MemSize 0))
@@ -144,15 +27,13 @@
 (define simulator-vars
   (append '(MPC Read? Write? MAR MBR) simulator-registers))
 
-(define (make-MIC1-simulator
-         MicrocodeImage MemoryImage InitialPC InitialSP)
-  (define WordSize 16)
-  (define RegisterCount 16)
-  (define MicrocodeSize 256)
-  (define MicrocodeWordSize 32)
-  
-  (define MicrocodeVec
-    (image->memory MicrocodeSize MicrocodeWordSize MicrocodeImage))
+(define WordSize 16)
+(define RegisterCount 16)
+(define MicrocodeSize 256)
+(define MicrocodeWordSize 32)
+
+(struct stepper (rr rs step!))
+(define (make-MIC1-step MicrocodeVec)
   (define Microcode
     (vector->list MicrocodeVec))
 
@@ -168,19 +49,10 @@
                   (in-list simulator-vars)]
                  [reg (in-list (list* MPC Read? Write? MAR MBR Registers))])
       (values label reg)))
-
   (define (register-set! r n)
     (write-number! (hash-ref WireMap r) n))
   (define (register-read r)
     (read-number (hash-ref WireMap r)))
-
-  (register-set! 'PC InitialPC)
-  (register-set! 'SP InitialSP)
-  (register-set! 'Z 0)
-  (register-set! 'P1 +1)
-  (register-set! 'N1 -1)
-  (register-set! 'AMASK #b0000111111111111)
-  (register-set! 'SMASK #b0000000011111111)
 
   (define the-mic1
     (MIC1 MicrocodeWordSize Microcode
@@ -191,6 +63,25 @@
   ;; XXX
   #;(analyze #:label "MIC1" the-mic1)
 
+  (stepper register-read register-set!
+           (λ () (simulate! the-mic1))))
+
+(define (make-MIC1-simulator
+         MicrocodeImage MemoryImage InitialPC InitialSP)
+
+  (define MicrocodeVec
+    (image->memory MicrocodeSize MicrocodeWordSize MicrocodeImage))
+
+  (match-define (stepper r r! step!) (make-MIC1-step MicrocodeVec))
+
+  (r! 'PC InitialPC)
+  (r! 'SP InitialSP)
+  (r! 'Z 0)
+  (r! 'P1 +1)
+  (r! 'N1 -1)
+  (r! 'AMASK #b0000111111111111)
+  (r! 'SMASK #b0000000011111111)
+
   (define Memory
     ;; Image is smaller because there are 4 bits in instructions. This
     ;; could be removed with memory banking or by allowing the stack
@@ -200,19 +91,19 @@
   (define (12bit x) (modulo x (expt 2 12)))
 
   (simulator
-   MicrocodeVec Memory register-set! register-read
+   MicrocodeVec Memory r! r
    (λ (inform!)
      (let loop ([readc 0] [writec 0])
-       (simulate! the-mic1)
+       (step!)
 
-       (define next-readc (if (bread Read?) (add1 readc) 0))
-       (define next-writec (if (bread Write?) (add1 writec) 0))       
+       (define next-readc (if (= 1 (r 'Read?)) (add1 readc) 0))
+       (define next-writec (if (= 1 (r 'Write?)) (add1 writec) 0))
        ;; xxx implement IO
        (when (> next-writec 4)
-         (vector-set! Memory (12bit (read-number MAR)) (read-number MBR))
+         (vector-set! Memory (12bit (r 'MAR)) (r 'MBR))
          (set! next-writec 0))
-       (when (> next-readc 4)         
-         (write-number! MBR (vector-ref Memory (12bit (read-number MAR))))
+       (when (> next-readc 4)
+         (r! 'MBR (vector-ref Memory (12bit (r 'MAR))))
          (set! next-readc 0))
 
        (inform!)
@@ -316,32 +207,32 @@
       (A J! + NS NB NA RD WR NC PC PC PC 0)))
 
   (define FIB-MICRO-IMAGE
-    '(#; 0 #b00000000101111010010011000000000
-      #; 1 #b00000000001111110110011000000000
-      #; 2 #b00010001101110111101011000000000
-      #; 3 #b00000000001111101111011000000000
-      #; 4 #b00000000000110101010101100000000
-      #; 5 #b00000000000111011111001000000000
-      #; 6 #b00110001101000001101101000001011
-      #; 7 #b00000000001100100010111000000000
-      #; 8 #b00000000000110111011101000000000
-      #; 9 #b00110001101000000010101100001011
-      #;10 #b01110000001100100000110100000100
-      #;11 #b01100000011000000000000000000000))
+    '(#b00000000101111010010011000000000
+      #b00000000001111110110011000000000
+      #b00010001101110111101011000000000
+      #b00000000001111101111011000000000
+      #b00000000000110101010101100000000
+      #b00000000000111011111001000000000
+      #b00110001101000001101101000001011
+      #b00000000001100100010111000000000
+      #b00000000000110111011101000000000
+      #b00110001101000000010101100001011
+      #b01110000001100100000110100000100
+      #b01100000011000000000000000000000))
 
   (define FIB-MICRO-IMAGE-STR
-    '(#; 0 "00000000101111010010011000000000"
-      #; 1 "00000000001111110110011000000000"
-      #; 2 "00010001101110111101011000000000"
-      #; 3 "00000000001111101111011000000000"
-      #; 4 "00000000000110101010101100000000"
-      #; 5 "00000000000111011111001000000000"
-      #; 6 "00110001101000001101101000001011"
-      #; 7 "00000000001100100010111000000000"
-      #; 8 "00000000000110111011101000000000"
-      #; 9 "00110001101000000010101100001011"
-      #;10 "01110000001100100000110100000100"
-      #;11 "01100000011000000000000000000000"))
+    '("00000000101111010010011000000000"
+      "00000000001111110110011000000000"
+      "00010001101110111101011000000000"
+      "00000000001111101111011000000000"
+      "00000000000110101010101100000000"
+      "00000000000111011111001000000000"
+      "00110001101000001101101000001011"
+      "00000000001100100010111000000000"
+      "00000000000110111011101000000000"
+      "00110001101000000010101100001011"
+      "01110000001100100000110100000100"
+      "01100000011000000000000000000000"))
 
   (with-chk (['mode "fib program encoding"])
     (chk (lines->image FIB-MICRO-IMAGE-STR) FIB-MICRO-IMAGE)
