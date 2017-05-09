@@ -1,5 +1,6 @@
 #lang racket/base
-(require racket/match
+(require racket/contract/base
+         racket/match
          "lib.rkt"
          "hdl.rkt"
          "simulator.rkt")
@@ -124,6 +125,8 @@
        (Latch/N Clock:4 Mmux-out MPC-out)
        (Increment/N MPC-out MPC-Inc-carry MPC-Inc-out)))
 
+(define compile-MIC1-circuit? (make-parameter #f))
+
 (define (make-MIC1-step MicrocodeVec)
   (define Microcode
     (vector->list MicrocodeVec))
@@ -151,8 +154,8 @@
           Read? Write?
           MAR MBR))
 
-  ;; XXX decide how to use compiler
-  #;(analyze #:label "MIC1" the-mic1)
+  (when (compile-MIC1-circuit?)
+    (analyze #:label "MIC1" the-mic1))
 
   (stepper register-read register-set!
            (λ ()
@@ -161,5 +164,9 @@
              (for ([subcycle (in-range 4)])
                (simulate! the-mic1)))))
 
-;; xxx contracts
-(provide make-MIC1-step)
+(provide
+ (contract-out
+  [compile-MIC1-circuit? (parameter/c boolean?)]
+  [make-MIC1-step
+   (-> (vectorof exact-integer?)
+       stepper?)]))

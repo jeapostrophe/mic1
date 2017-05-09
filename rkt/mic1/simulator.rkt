@@ -1,11 +1,7 @@
 #lang racket/base
 (require racket/match
+         racket/contract/base
          "lib.rkt")
-
-(define WordSize 16)
-(define RegisterCount 16)
-(define MicrocodeSize 256)
-(define MicrocodeWordSize 32)
 
 (define (12bit x) (modulo x (expt 2 12)))
 (define (16bit x) (modulo x (expt 2 16)))
@@ -14,6 +10,11 @@
   '(PC AC SP IR TIR Z P1 N1 AMASK SMASK A B C D E F))
 (define simulator-vars
   (append '(MPC Read? Write? MAR MBR) simulator-registers))
+
+(define WordSize 16)
+(define RegisterCount (length simulator-registers))
+(define MicrocodeSize 256)
+(define MicrocodeWordSize 32)
 
 (struct stepper (rr rs step!))
 
@@ -55,7 +56,7 @@
   (r! 'TIR 0)
   (r! 'Z 0)
   (r! 'P1 +1)
-  (r! 'N1 -1)
+  (r! 'N1 (sub1 (expt 2 WordSize)))
   (r! 'AMASK #b0000111111111111)
   (r! 'SMASK #b0000000011111111)
   (r! 'A 0)
@@ -168,5 +169,31 @@
         (reg-decode (bitwise-bit-field n 8 12))
         (bitwise-bit-field n 0 8)))
 
-;; xxx contracts
-(provide (all-defined-out))
+(define μinst/c (listof any/c))
+(provide
+ (contract-out
+  [WordSize exact-integer?]
+  [RegisterCount exact-integer?]
+  [MicrocodeWordSize exact-integer?]
+  [simulator-vars (listof symbol?)]
+  [simulator-registers (listof symbol?)]
+  [12bit (-> exact-integer? exact-integer?)]
+  [16bit (-> exact-integer? exact-integer?)]
+  [μencode (-> μinst/c (listof exact-integer?))]
+  [μwrite (-> (listof exact-integer?) exact-integer?)]
+  [μdecode (-> exact-integer? μinst/c)]
+  (struct stepper ([rr (-> (apply or/c simulator-vars) exact-integer?)]
+                   [rs (-> (apply or/c simulator-vars) exact-integer? void?)]
+                   [step! (-> void?)]))
+  (struct simulator ([mc (vectorof exact-integer?)]
+                     [mem (vectorof exact-integer?)]
+                     [rs (-> (apply or/c simulator-vars) exact-integer? void?)]
+                     [rr (-> (apply or/c simulator-vars) exact-integer?)]
+                     [start (-> (-> void?) any)]))
+  [make-MIC1-simulator
+   (-> (-> (vectorof exact-integer?) stepper?)
+       (listof exact-integer?)
+       (listof exact-integer?)
+       exact-integer?
+       exact-integer?
+       simulator?)]))

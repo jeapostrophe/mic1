@@ -106,6 +106,7 @@
     (set! InitialSP (string->number sp-str))]
    #:args (microcode-path memory-image-path)
 
+   (ll:compile-MIC1-circuit? #t)
    (define start!
      (make-MIC1-simulator
       make-MIC1-step

@@ -1,5 +1,6 @@
 #lang racket/base
-(require racket/match)
+(require racket/match
+         racket/contract/base)
 (module+ test
   (require chk))
 
@@ -31,5 +32,14 @@
        (unsigned->signed 4 #b1011) -5
        (unsigned->signed 4 #b1111) -1))
 
-;; xxx contracts
-(provide (all-defined-out))
+(provide
+ (contract-out
+  [unsigned->signed
+   (-> exact-positive-integer? exact-integer?
+       exact-integer?)]
+  [bits->number
+   (-> (listof boolean?)
+       exact-integer?)]
+  [numbers->bits
+   (-> exact-integer? (listof exact-integer?)
+       (listof (listof boolean?)))]))

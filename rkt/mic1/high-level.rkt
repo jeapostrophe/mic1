@@ -1,5 +1,6 @@
 #lang racket/base
-(require racket/match
+(require racket/contract/base
+         racket/match
          "lib.rkt"
          "simulator.rkt")
 
@@ -64,4 +65,8 @@
 
   (stepper st st! (λ () (step! MicrocodeVec st st!))))
 
-(provide make-MIC1-step)
+(provide
+ (contract-out
+  [make-MIC1-step
+   (-> (vectorof exact-integer?)
+       stepper?)]))

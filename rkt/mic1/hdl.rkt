@@ -944,7 +944,7 @@
 (provide HDL-DEBUG?
          Mt Net
          define-wires Wire Bundle
-         simulate!
+         simulate! analyze
          bread bwrite!
          breadn bwriten!
          read-number write-number!
