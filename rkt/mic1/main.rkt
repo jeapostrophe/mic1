@@ -114,3 +114,6 @@
       InitialPC
       InitialSP))
    (debug-MIC1 start!)))
+
+;; xxx add microcompiler
+;; xxx add macroassembler
