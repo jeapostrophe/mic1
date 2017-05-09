@@ -2,6 +2,7 @@
 (require racket/match
          racket/list
          syntax/parse/define
+         "lib.rkt"
          (for-syntax racket/base
                      syntax/parse))
 (module+ test
@@ -740,12 +741,6 @@
 (define (ROM-AddrSpace vals)
   (integer-length (sub1 (length vals))))
 
-(define (number->bits N n)
-  (for/list ([i (in-range N)])
-    (bitwise-bit-set? n i)))
-(define (numbers->bits N ns)
-  (map (λ (n) (number->bits N n)) ns))
-
 (define (ROM-1bit value-bits Which ValueBitOut)
   (unless (= (length value-bits) (length Which))
     (error 'ROM-1bit "Mismatch of signals and bits"))
@@ -931,28 +926,6 @@
     #:check
     (chk Bit (zero? In))))
 
-(define (bits->number bs)
-  (for/sum ([i (in-naturals)]
-            [b (in-list bs)])
-    (* (if b 1 0) (expt 2 i))))
-(module+ test
-  (chk (bits->number '(#t #f #f #f))  1
-       (bits->number '(#t #f #t #f))  5
-       (bits->number '(#t #t #f #t)) 11
-       (bits->number '(#t #t #t #t)) 15))
-
-(define (unsigned->signed bits x)
-  (define unbs (number->bits bits x))
-  (match-define (cons last-bit rfirst-bits) (reverse unbs))
-  (define first-bits (reverse rfirst-bits))
-  (+ (* -1 (if last-bit 1 0) (expt 2 (sub1 bits)))
-     (bits->number first-bits)))
-(module+ test
-  (chk (unsigned->signed 4 #b0001)  1
-       (unsigned->signed 4 #b0101)  5
-       (unsigned->signed 4 #b1011) -5
-       (unsigned->signed 4 #b1111) -1))
-
 (define (IsNegative? In Bit)
   (Id (last In) Bit))
 (module+ test
@@ -975,7 +948,6 @@
          bread bwrite!
          breadn bwriten!
          read-number write-number!
-         unsigned->signed bits->number
          TRUE FALSE GROUND
          Nand
          

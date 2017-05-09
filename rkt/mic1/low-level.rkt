@@ -1,5 +1,6 @@
 #lang racket/base
 (require racket/match
+         "lib.rkt"
          "hdl.rkt"
          "simulator.rkt")
 (module+ test

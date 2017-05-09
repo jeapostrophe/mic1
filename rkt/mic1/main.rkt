@@ -2,7 +2,7 @@
 (require racket/match
          racket/list
          racket/runtime-path
-         "hdl.rkt"
+         "lib.rkt"
          "low-level.rkt"
          "simulator.rkt")
 (module+ test
@@ -111,20 +111,17 @@
         (register A)
         ADDR))
 
+;; xxx rewrite this to use math
 (define (μwrite ns)
-  (define-wires
-    [MIR 32]
-    MIR:AMUX [MIR:COND 2] [MIR:ALU 2] [MIR:SH 2]
-    MIR:MBR MIR:MAR MIR:RD MIR:WR MIR:ENC
-    [MIR:C 4] [MIR:B 4] [MIR:A 4]
-    [MIR:ADDR 8])
-  (define fields
-    (list MIR:AMUX MIR:COND MIR:ALU MIR:SH
-          MIR:MBR MIR:MAR MIR:RD MIR:WR
-          MIR:ENC MIR:C MIR:B MIR:A MIR:ADDR))
-  (for-each write-number! fields ns)
-  (simulate! (Cut/N (reverse fields) MIR))
-  (read-number MIR))
+  (local-require racket/format)
+  (define (b n [w 1])
+    (~r n #:base 2 #:pad-string "0" #:min-width w))
+  (match-define (list AMUX COND ALU SH MBR MAR RD WR ENC C B A ADDR) ns)
+  (define ss (list (b AMUX) (b COND 2) (b ALU 2) (b SH 2) (b MBR) (b MAR)
+                   (b RD) (b WR) (b ENC) (b C 4) (b B 4) (b A 4) (b ADDR 8)))
+  (define s (apply string-append ss))
+  (define n (string->number s 2))
+  n)
 
 (module+ test
   (define (chk-μenc se en)
