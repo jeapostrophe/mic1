@@ -151,11 +151,15 @@
           Read? Write?
           MAR MBR))
 
-  ;; XXX
+  ;; XXX decide how to use compiler
   #;(analyze #:label "MIC1" the-mic1)
 
   (stepper register-read register-set!
-           (λ () (simulate! the-mic1))))
+           (λ ()
+             ;; It takes four rounds of simualtion for one machine
+             ;; cycle
+             (for ([subcycle (in-range 4)])
+               (simulate! the-mic1)))))
 
 ;; xxx contracts
 (provide make-MIC1-step)

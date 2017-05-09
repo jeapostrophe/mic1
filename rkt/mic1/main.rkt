@@ -3,8 +3,9 @@
          racket/list
          racket/runtime-path
          "lib.rkt"
+         "simulator.rkt"
          (prefix-in ll: "low-level.rkt")
-         "simulator.rkt")
+         (prefix-in hl: "high-level.rkt"))
 (module+ test
   (require chk))
 
@@ -64,15 +65,20 @@
   (lines->image (file->lines p)))
 
 (module+ test
-  (let ()
+  (define (test-debugger-on-fib make-MIC1-step)
     (local-require (submod "mic1-test.rkt" test))
-    (define sim (make-MIC1-simulator ll:make-MIC1-step FIB-MICRO-IMAGE empty 0 100))
+    (define sim (make-MIC1-simulator make-MIC1-step FIB-MICRO-IMAGE empty 0 100))
     (debug-MIC1 sim)
     (define mem (simulator-mem sim))
     (local-require racket/vector)
     (chk (vector-copy mem 100 125)
          (vector 0 1 1 2 3 5 8 13 21 34 55 89 144 233 377
-                 610 987 1597 2584 4181 6765 10946 17711 28657 46368))))
+                 610 987 1597 2584 4181 6765 10946 17711 28657 46368)))
+
+  (with-chk (['sim 'll])
+    (test-debugger-on-fib ll:make-MIC1-step))
+  (with-chk (['sim 'hl])
+    (test-debugger-on-fib hl:make-MIC1-step)))
 
 (module+ main
   (require racket/cmdline)
@@ -85,9 +91,14 @@
 
   (define InitialPC 0)
   (define InitialSP 1024)
+  (define make-MIC1-step ll:make-MIC1-step)
   (command-line
    #:program "mic1"
-   ;; xxx choose high or low-level emu
+   #:once-any
+   [("--ll") "Use low-level (gate based) simulator (default)"
+    (set! make-MIC1-step ll:make-MIC1-step)]
+   [("--hl") "Use high-level (algorithmic) simulator"
+    (set! make-MIC1-step hl:make-MIC1-step)]
    #:once-each
    [("--pc") pc-str "Initial Program Counter (default: 0)"
     (set! InitialPC (string->number pc-str))]
@@ -97,7 +108,7 @@
 
    (define start!
      (make-MIC1-simulator
-      ll:make-MIC1-step
+      make-MIC1-step
       (file->image microcode-path)
       (file->image memory-image-path)
       InitialPC

@@ -2,8 +2,8 @@
 (require racket/match
          racket/list
          "simulator.rkt"
-         ;; xxx test ll and hl
-         (prefix-in ll: "low-level.rkt"))
+         (prefix-in ll: "low-level.rkt")
+         (prefix-in hl: "high-level.rkt"))
 (module+ test
   (require chk))
 
@@ -86,8 +86,8 @@
                  ['actual-n actual-n]
                  ['expected expected]
                  ['i i])
-        (chk (number->string actual-n 2)
-             (number->string expected 2))))))
+        (chk (number->string actual-n 2) (number->string expected 2)
+             (μdecode actual-n) actual-se)))))
 
 (module+ test
   (define standard-reg-values
@@ -111,7 +111,6 @@
       (define (make-init)
         (for/hasheq ([sv (in-list simulator-vars)])
           (values sv (r sv))))
-
 
       (let/ec esc
         (define afteri 0)
@@ -144,13 +143,7 @@
           (when (empty? afters)
             (esc)))
 
-        (define c 0)
-        (define (inform!)
-          (set! c (add1 c))
-          (when (= c 4)
-            (run-next-test!)
-            (set! c 0)))
-        (start! inform!)))
+        (start! run-next-test!)))
 
     (define (chk-mic1μ μinst-sym before after)
       (chk-mic1μs (list μinst-sym) empty before (cons after (hasheq))))
@@ -303,7 +296,10 @@
      (cons (hasheq 'MPC 8 'SP 5 'Write? 1)
            (hasheq 0 0 1 1 2 1 3 2 4 3))))
 
-  (run-all-mic1-tests ll:make-MIC1-step))
+  (with-chk (['sim 'll])
+    (run-all-mic1-tests ll:make-MIC1-step))
+  (with-chk (['sim 'hl])
+    (run-all-mic1-tests hl:make-MIC1-step)))
 
 (module+ test
   (provide FIB-MICRO-IMAGE))

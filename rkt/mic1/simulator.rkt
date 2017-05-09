@@ -7,6 +7,9 @@
 (define MicrocodeSize 256)
 (define MicrocodeWordSize 32)
 
+(define (12bit x) (modulo x (expt 2 12)))
+(define (16bit x) (modulo x (expt 2 16)))
+
 (define simulator-registers
   '(PC AC SP IR TIR Z P1 N1 AMASK SMASK A B C D E F))
 (define simulator-vars
@@ -40,21 +43,33 @@
 
   (match-define (stepper r r! step!) (make-MIC1-step MicrocodeVec))
 
+  (r! 'MPC 0)
+  (r! 'Read? 0)
+  (r! 'Write? 0)
+  (r! 'MAR 0)
+  (r! 'MBR 0)
   (r! 'PC InitialPC)
+  (r! 'AC 0)
   (r! 'SP InitialSP)
+  (r! 'IR 0)
+  (r! 'TIR 0)
   (r! 'Z 0)
   (r! 'P1 +1)
   (r! 'N1 -1)
   (r! 'AMASK #b0000111111111111)
   (r! 'SMASK #b0000000011111111)
+  (r! 'A 0)
+  (r! 'B 0)
+  (r! 'C 0)
+  (r! 'D 0)
+  (r! 'E 0)
+  (r! 'F 0)
 
   (define Memory
     ;; Image is smaller because there are 4 bits in instructions. This
     ;; could be removed with memory banking or by allowing the stack
     ;; to be higher, etc.
     (image->memory (expt 2 (- WordSize 4)) WordSize MemoryImage))
-
-  (define (12bit x) (modulo x (expt 2 12)))
 
   (simulator
    MicrocodeVec Memory r! r
@@ -65,10 +80,10 @@
        (define next-readc (if (= 1 (r 'Read?)) (add1 readc) 0))
        (define next-writec (if (= 1 (r 'Write?)) (add1 writec) 0))
        ;; xxx implement IO
-       (when (> next-writec 4)
+       (when (= next-writec 2)
          (vector-set! Memory (12bit (r 'MAR)) (r 'MBR))
          (set! next-writec 0))
-       (when (> next-readc 4)
+       (when (= next-readc 2)
          (r! 'MBR (vector-ref Memory (12bit (r 'MAR))))
          (set! next-readc 0))
 
@@ -129,6 +144,29 @@
   (define s (apply string-append ss))
   (define n (string->number s 2))
   n)
+
+(define REGISTERS
+  (list->vector '(PC AC SP IR TIR Z P1 N1 AMASK SMASK A B C D E F)))
+(define (reg-decode n)
+  (vector-ref REGISTERS n))
+(define (μdecode n)
+  (list (if (bitwise-bit-set? n 31) 'MBR 'A)
+        (match (bitwise-bit-field n 29 31)
+          [0 'NJ] [1 'JN] [2 'JZ] [3 'J!])
+        (match (bitwise-bit-field n 27 29)
+          [0 '+] [1 '&] [2 'A] [3 '!])
+        (match (bitwise-bit-field n 25 27)
+          [0 'NS] [1 'RS] [2 'LS]
+          [3 (error 'micro-decode "Shift field may not be 11")])
+        (if (bitwise-bit-set? n 24) 'MBR 'NB)
+        (if (bitwise-bit-set? n 23) 'MAR 'NA)
+        (if (bitwise-bit-set? n 22) 'RD 'NR)
+        (if (bitwise-bit-set? n 21) 'WR 'NW)
+        (if (bitwise-bit-set? n 20) 'ENC 'NC)
+        (reg-decode (bitwise-bit-field n 16 20))
+        (reg-decode (bitwise-bit-field n 12 16))
+        (reg-decode (bitwise-bit-field n 8 12))
+        (bitwise-bit-field n 0 8)))
 
 ;; xxx contracts
 (provide (all-defined-out))
