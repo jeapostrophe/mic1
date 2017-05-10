@@ -65,8 +65,9 @@
   (lines->image (file->lines p)))
 
 (module+ test
-  (define (test-debugger-on-fib make-MIC1-step)
+  (define (test-debugger-on-fib which make-MIC1-step)
     (local-require (submod "mic1-test.rkt" test))
+    (printf "Testing fib program (~a)\n" which)
     (define sim (make-MIC1-simulator make-MIC1-step FIB-MICRO-IMAGE empty 0 100))
     (debug-MIC1 sim)
     (define mem (simulator-mem sim))
@@ -76,9 +77,12 @@
                  610 987 1597 2584 4181 6765 10946 17711 28657 46368)))
 
   (with-chk (['sim 'll])
-    (test-debugger-on-fib ll:make-MIC1-step))
+    (test-debugger-on-fib "low-level" ll:make-MIC1-step))
+  (with-chk (['sim 'll-compiled])
+    (ll:compile-MIC1-circuit? #t)
+    (test-debugger-on-fib "low-level (C)" ll:make-MIC1-step))
   (with-chk (['sim 'hl])
-    (test-debugger-on-fib hl:make-MIC1-step)))
+    (test-debugger-on-fib "high-level" hl:make-MIC1-step)))
 
 (define (main!)
   (local-require racket/cmdline)
@@ -100,7 +104,7 @@
     (set! InitialSP (string->number sp-str))]
    #:args (microcode-path memory-image-path)
 
-   (ll:compile-MIC1-circuit? #t)
+   (ll:compile-MIC1-circuit? "MIC1")
    (define start!
      (make-MIC1-simulator
       make-MIC1-step
@@ -110,19 +114,23 @@
       InitialSP))
    (debug-MIC1 start!)))
 
+;; XXX For some reason the input port stuff here is broken
+;;
+;; Make a Makefile example to test command line
+#;
 (module+ test
   (require racket/runtime-path
            racket/string)
   (define-runtime-path standard-prom-path "../../examples/prom.dat")
   (define-runtime-path example-asm-path "../../examples/IO_str_and_echo.o")
+  (printf "Testing IO program\n")
   (define os (open-output-string))
   (parameterize ([current-command-line-arguments
                   (vector (path->string standard-prom-path)
                           (path->string example-asm-path))]
                  [current-input-port
                   (open-input-string "abcdefghijklmnopqrstuvwxyz\n0123456789\n")]
-                 ;; xxx
-                 #;[current-output-port os])
+                 [current-output-port os])
     (main!))
   (match-define (list* sample in0 in1 more) (string-split (get-output-string os) "\n"))
   (chk sample "THIS IS A TEST STRING1\r"

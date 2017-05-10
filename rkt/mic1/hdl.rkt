@@ -115,9 +115,16 @@
 ;; duplication? represent an output wire as the nand and hash-cons
 ;; those? iterate to fix-point?
 
+(define compiler-executor (make-will-executor))
+(define (compiler-executor-go)
+  (will-execute compiler-executor)
+  (compiler-executor-go))
+(define compiler-executor-t
+  (thread compiler-executor-go))
+
 (define (compile-simulate! sn
                            #:visible-wires [visible-wires empty]
-                           #:label [label "Circuit"])
+                           #:label [label #f])
   (local-require racket/set
                  racket/system
                  ffi/unsafe
@@ -141,22 +148,33 @@
         #:when (> c 1))
     (eprintf "~a wire set more than once.\n" w))
 
-  (eprintf "~a has ~a NAND gates and ~a wires\n"
-           label Gates (hash-count WireUses))
-
   (define _wire_t _uint64)
   (define WIRE-WIDTH 64)
 
+  (define flat-vwires (flatten visible-wires))
+
   (define Wire->A*B (make-hasheq))
+  (for ([w (in-list flat-vwires)])
+    (hash-remove! WireUses w))
+  (define WireOrder (append flat-vwires (hash-keys WireUses)))
   (define As (mutable-set))
-  (for ([w (in-hash-keys WireUses)]
+  (for ([w (in-list WireOrder)]
         [i (in-naturals)])
     (define-values (A B) (quotient/remainder i WIRE-WIDTH))
     (set-add! As A)
     (hash-set! Wire->A*B w (cons A B)))
   (define HOW-MANY-WIRE-VARS (set-count As))
 
-  (define sn.c (path-add-extension label #".c"))
+  (define temp? (not label))
+  (unless temp?
+    (eprintf "~a has ~a NAND gates and ~a wires\n"
+             label Gates (hash-count WireUses)))
+  (define the-label
+    (if temp?
+      (format "HDL-Temp-~a"  (current-milliseconds))
+      label))
+
+  (define sn.c (path-add-extension the-label #".c"))
   (with-output-to-file sn.c
     #:exists 'replace
     (λ ()
@@ -166,7 +184,9 @@
       (printf "\n")
 
       (printf "typedef uint~a_t wire_t;\n" WIRE-WIDTH)
-      (printf "wire_t WIRES[~a] = {0};\n" HOW-MANY-WIRE-VARS)
+      (printf "wire_t WIRES[~a] = {~a};\n" HOW-MANY-WIRE-VARS
+              (apply string-append
+                     (add-between (make-list HOW-MANY-WIRE-VARS "0") ", ")))
       (printf "typedef ~a wireidx_t;\n"
               (cond
                 [(<= HOW-MANY-WIRE-VARS (expt 2  8)) "uint8_t"]
@@ -176,13 +196,27 @@
                 [else (error 'compiler "Too many wires")]))
       (printf "\n")
 
-      (printf "void nand(wireidx_t aA, uint8_t aB, wireidx_t bA, uint8_t bB, wireidx_t oA, uint8_t oB) {\n")
-      (printf "\tuint8_t L = (WIRES[aA] & (1<<aB)) ? 1 : 0;\n")
-      (printf "\tuint8_t R = (WIRES[bA] & (1<<bB)) ? 1 : 0;\n")
+      (printf "static void nand(wireidx_t aA, uint8_t aB, wireidx_t bA, uint8_t bB, wireidx_t oA, uint8_t oB) {\n")
+      (printf "\tuint8_t L = (WIRES[aA] & ((wire_t)1<<aB)) ? 1 : 0;\n")
+      (printf "\tuint8_t R = (WIRES[bA] & ((wire_t)1<<bB)) ? 1 : 0;\n")
       (printf "\tuint8_t A = L & R ? 0 : 1;\n")
       (printf "\twire_t O = WIRES[oA];\n")
-      (printf "\twire_t M = (1<<oB);\n")
+      (printf "\twire_t M = ((wire_t)1<<oB);\n")
       (printf "\tWIRES[oA] = A ? (O | M) : (O & (~~M));\n")
+      (printf "}\n")
+      (printf "\n")
+
+      (printf "static void show1(wireidx_t A, uint8_t B) {\n")
+      (printf "\tprintf(\"%c\", ((WIRES[A] & ((wire_t)1<<B)) ? '1' : '0'));\n")
+      (printf "}\n")
+      (printf "\n")
+
+      (printf "void show() {\n")
+      (for ([w (in-list WireOrder)])
+        (match-define (cons A B) (hash-ref Wire->A*B w))
+        (printf "\tshow1(~a, ~a);\n" A B))
+      (printf "\tprintf(\"\\n\");\n")
+      (printf "\tfflush(stdout);\n")
       (printf "}\n")
       (printf "\n")
 
@@ -198,8 +232,10 @@
           (printf "\tnand(~a, ~a, ~a, ~a, ~a, ~a);\n"
                   aA aB bA bB oA oB)]))
       (printf "}\n")))
+  (when temp?
+    (will-register compiler-executor sn.c delete-file))
 
-  (define sn.so (path-add-extension label (system-type 'so-suffix)))
+  (define sn.so (path-add-extension the-label (system-type 'so-suffix)))
   (unless (system* (find-executable-path "cc")
                    "-O3" "-march=native"
                    sn.c
@@ -207,16 +243,18 @@
     (error 'compile-simulate! "Compilation failed"))
 
   (define sn-lib (ffi-lib sn.so))
+  (when temp?
+    (will-register compiler-executor sn.so delete-file))
 
   (define WIRES-ptr (ffi-obj-ref "WIRES" sn-lib))
 
   (define WIRES (make-cvector* WIRES-ptr _wire_t HOW-MANY-WIRE-VARS))
   (for ([i (in-range HOW-MANY-WIRE-VARS)])
     (cvector-set! WIRES i 0))
-  
-  (define cycle! (get-ffi-obj "cycle" sn-lib (_fun -> _void)))
 
-  (define flat-vwires (flatten visible-wires))
+  (define cycle! (get-ffi-obj "cycle" sn-lib (_fun -> _void)))
+  (define show! (get-ffi-obj "show" sn-lib (_fun -> _void)))
+
   (define effective-vwires
     (if (hash-has-key? Wire->A*B TRUE)
       (cons TRUE flat-vwires)
@@ -226,33 +264,29 @@
       (match-define (cons A B) (hash-ref Wire->A*B vw))
       (vector vw A B)))
 
-  ;; xxx if expensive, pass a flag to decide if to copy or not
-  ;; xxx OR sort by A? and optimize read/write
-  (λ ()
+  ;; xxx sort by A? and optimize read/write
+  (define (simulate-once write? read?)
     ;; Write Visible Wires
-    (for ([ref (in-list flat-vw-refs)])
-      (match-define (vector vw A B) ref)
-      (define av (cvector-ref WIRES A))
-      (unless (eq? (bread vw) (bitwise-bit-set? av B))
-        (define M (arithmetic-shift 1 B))
-        (define nav (bitwise-xor av M))
-        #;(printf "av = ~a, B = ~a, M = ~a, nav = ~a \n"
-                (number->string av 2) B (number->string M 2) (number->string nav 2))
-        (cvector-set! WIRES A nav)))
+    (when write?
+      (for ([ref (in-list flat-vw-refs)])
+        (match-define (vector vw A B) ref)
+        (define av (cvector-ref WIRES A))
+        (unless (eq? (bread vw) (bitwise-bit-set? av B))
+          (define M (arithmetic-shift 1 B))
+          (define nav (bitwise-xor av M))
+          (cvector-set! WIRES A nav))))
 
-    #;(for ([i (in-range HOW-MANY-WIRE-VARS)])
-      (printf "B~a = ~a\n" i (number->string (cvector-ref WIRES i) 2)))
     (cycle!)
-    #;(for ([i (in-range HOW-MANY-WIRE-VARS)])
-      (printf "A~a = ~a\n" i (number->string (cvector-ref WIRES i) 2)))
 
     ;; Read Visible Wires
-    (for ([ref (in-list flat-vw-refs)])
-      (match-define (vector vw A B) ref)
-      (unless (eq? vw TRUE)
-        (define av (cvector-ref WIRES A))
-        #;(eprintf "~a is ~a,~a is ~a\n" vw A B av)
-        (bwrite! vw (bitwise-bit-set? av B))))))
+    (when read?
+      (for ([ref (in-list flat-vw-refs)])
+        (match-define (vector vw A B) ref)
+        (unless (eq? vw TRUE)
+          (define av (cvector-ref WIRES A))
+          (bwrite! vw (bitwise-bit-set? av B))))))
+
+  simulate-once)
 
 ;; Exhaustive testing
 (module+ test
@@ -287,11 +321,11 @@
             (define n (apply f the-wires))
             (cond
               [compile?
-               ;; XXX If this is commented out, it breaks
-               #;(printf "~v\n" l)
                (define the-simulate!
-                 (compile-simulate! n #:visible-wires the-wires))
-               (the-simulate!)]
+                 (compile-simulate! n
+                                    #:visible-wires
+                                    (filter wire? (flatten the-wires))))
+               (the-simulate! #t #t)]
               [else
                (simulate! n)])
             (with-chk (['ins ins])
@@ -1003,4 +1037,5 @@
          RegisterRead
          IsZero? IsNegative?)
 (module+ test
+  (collect-garbage)
   (provide chk-tt define-chk-num simulate&chk))

@@ -156,23 +156,28 @@
           Read? Write?
           MAR MBR))
 
+  (define compile? (compile-MIC1-circuit?))
   (define real-simulate!
-    (if (compile-MIC1-circuit?)
+    (if compile?
       (compile-simulate! the-mic1
-                         #:label "MIC1"
+                         #:label (match compile?
+                                   [#t #f]
+                                   [x x])
                          #:visible-wires simulator-wires)
-      (λ () (simulate! the-mic1))))
+      (λ (write? read?) (simulate! the-mic1))))
 
   (stepper register-read register-set!
            (λ ()
              ;; It takes four rounds of simulation for one machine
              ;; cycle
              (for ([subcycle (in-range 4)])
-               (real-simulate!)))))
+               (real-simulate!
+                (= subcycle 0)
+                (= subcycle 3))))))
 
 (provide
  (contract-out
-  [compile-MIC1-circuit? (parameter/c boolean?)]
+  [compile-MIC1-circuit? (parameter/c any/c)]
   [make-MIC1-step
    (-> (vectorof exact-integer?)
        stepper?)]))

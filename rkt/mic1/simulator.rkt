@@ -93,10 +93,11 @@
          ;; D&B
          (when (and (= (vector-ref Memory UART-TX-C) #b1010)
                     (= addr UART-TX-D))
-           (vector-set! Memory UART-TX-C #b1001)
-           (write-byte (bitwise-bit-field val 0 8))
+           #;(vector-set! Memory UART-TX-C #b1001)
+           (define b (bitwise-bit-field val 0 8))
+           (write-byte b)
            (flush-output)
-           (vector-set! Memory UART-TX-C #b1010))
+           #;(vector-set! Memory UART-TX-C #b1010))
 
          ;; UART: Stablize control bytes
          (define (uart-stabilize! c-addr default)
@@ -114,7 +115,7 @@
        (when (= next-readc 2)
          (define addr (12bit (r 'MAR)))
          (r! 'MBR (vector-ref Memory addr))
-         
+
          ;; UART: RX is on and done and data read, so swap D & B
          (when (and (= (vector-ref Memory UART-RX-C) #b1010)
                     (= addr UART-RX-D))
@@ -125,7 +126,8 @@
          ;; assume the program is reading memory to poll.
          (when (and (= (vector-ref Memory UART-RX-C) #b1001)
                     (byte-ready?))
-           (vector-set! Memory UART-RX-D (read-byte))
+           (define b (read-byte))
+           (vector-set! Memory UART-RX-D (if (eof-object? b) 0 b))
            (vector-set! Memory UART-RX-C #b1010))
 
          (set! next-readc 0))

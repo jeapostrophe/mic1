@@ -34,6 +34,7 @@ top:    lodd cnt:
         jzer over:
 	    call rbsywt:
 	    lodd 4092
+        jzer over:              ; exit on NUL
         stod 4094
 	    call xbsywt:
         jump top:
