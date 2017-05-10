@@ -115,9 +115,14 @@
 ;; duplication? represent an output wire as the nand and hash-cons
 ;; those? iterate to fix-point?
 
-(define (analyze sn
-                 #:compile? [compile? #f]
-                 #:label [label "Circuit"])
+(define (compile-simulate! sn
+                           #:visible-wires [visible-wires empty]
+                           #:label [label "Circuit"])
+  (local-require racket/set
+                 racket/system
+                 ffi/unsafe
+                 ffi/unsafe/cvector)
+
   (define Gates 0)
   (define WireUses (make-hasheq))
   (define WireSets (make-hasheq))
@@ -139,100 +144,115 @@
   (eprintf "~a has ~a NAND gates and ~a wires\n"
            label Gates (hash-count WireUses))
 
-  ;; xxx move compiler to another file
-  (when compile?
-    (with-output-to-file (path-add-extension label #".c")
-      #:exists 'replace
-      (λ ()
-        (define Wire->Id (make-hasheq))
+  (define _wire_t _uint64)
+  (define WIRE-WIDTH 64)
 
-        (printf "// Wires\n")
-        (for ([w (in-hash-keys WireUses)])
-          (define id (gensym 'w))
-          (hash-set! Wire->Id w id)
-          (printf "char ~a = 0;\n" id))
-        (printf "\n")
+  (define Wire->A*B (make-hasheq))
+  (define As (mutable-set))
+  (for ([w (in-hash-keys WireUses)]
+        [i (in-naturals)])
+    (define-values (A B) (quotient/remainder i WIRE-WIDTH))
+    (set-add! As A)
+    (hash-set! Wire->A*B w (cons A B)))
+  (define HOW-MANY-WIRE-VARS (set-count As))
 
-        (printf "void cycle() {\n")
-        (tree-walk
-         sn
-         (match-lambda
-           [(debug f) (void)]
-           [(nand a b o)
-            (printf "\t~a = !(~a & ~a);\n"
-                    (hash-ref Wire->Id o)
-                    (hash-ref Wire->Id a)
-                    (hash-ref Wire->Id b))]))
-        (printf "}\n")))
+  (define sn.c (path-add-extension label #".c"))
+  (with-output-to-file sn.c
+    #:exists 'replace
+    (λ ()
+      (printf "#include <stdint.h>\n")
+      (printf "#include <stdio.h>\n")
+      (printf "#include <stdlib.h>\n")
+      (printf "\n")
 
-    ;; opt -S -O3 MIC1.ll > MIC1.opt.ll
-    ;; llc -O3 MIC1.opt.ll
-    (with-output-to-file (path-add-extension label #".ll")
-      #:exists 'replace
-      (λ ()
-        (define Wire->Idx (make-hasheq))
-        (for ([w (in-hash-keys WireUses)]
-              [i (in-naturals)])
-          (hash-set! Wire->Idx w i))
-        (define WC (hash-count Wire->Idx))
-        ;; xxx maybe it would be more efficient to divide into word sized things
-        (define WType (format "[~a x i1]" WC))
+      (printf "typedef uint~a_t wire_t;\n" WIRE-WIDTH)
+      (printf "wire_t WIRES[~a] = {0};\n" HOW-MANY-WIRE-VARS)
+      (printf "typedef ~a wireidx_t;\n"
+              (cond
+                [(<= HOW-MANY-WIRE-VARS (expt 2  8)) "uint8_t"]
+                [(<= HOW-MANY-WIRE-VARS (expt 2 16)) "uint16_t"]
+                [(<= HOW-MANY-WIRE-VARS (expt 2 32)) "uint32_t"]
+                [(<= HOW-MANY-WIRE-VARS (expt 2 64)) "uint64_t"]
+                [else (error 'compiler "Too many wires")]))
+      (printf "\n")
 
-        (printf "; Wires\n")
-        (printf "@WIRES = global ~a zeroinitializer, align 1\n" WType)
-        (printf "\n")
+      (printf "void nand(wireidx_t aA, uint8_t aB, wireidx_t bA, uint8_t bB, wireidx_t oA, uint8_t oB) {\n")
+      (printf "\tuint8_t L = (WIRES[aA] & (1<<aB)) ? 1 : 0;\n")
+      (printf "\tuint8_t R = (WIRES[bA] & (1<<bB)) ? 1 : 0;\n")
+      (printf "\tuint8_t A = L & R ? 0 : 1;\n")
+      (printf "\twire_t O = WIRES[oA];\n")
+      (printf "\twire_t M = (1<<oB);\n")
+      (printf "\tWIRES[oA] = A ? (O | M) : (O & (~~M));\n")
+      (printf "}\n")
+      (printf "\n")
 
-        (printf "define void @cycle() {\n")
+      (printf "void cycle() {\n")
+      (tree-walk
+       sn
+       (match-lambda
+         [(debug f) (void)]
+         [(nand a b o)
+          (match-define (cons aA aB) (hash-ref Wire->A*B a))
+          (match-define (cons bA bB) (hash-ref Wire->A*B b))
+          (match-define (cons oA oB) (hash-ref Wire->A*B o))
+          (printf "\tnand(~a, ~a, ~a, ~a, ~a, ~a);\n"
+                  aA aB bA bB oA oB)]))
+      (printf "}\n")))
 
-        (printf "\t; Load\n")
-        (printf "\t%WIRES0 = load ~a, ~a* @WIRES, align 1\n" WType WType)
-        (define Wire->Ver (make-hasheq))
-        (for ([(w idx) (in-hash Wire->Idx)])
-          (printf "\t%w_~a_~a = extractvalue ~a %WIRES~a, ~a\n"
-                  idx 0 WType 0 idx)
-          (hash-set! Wire->Ver w 0))
+  (define sn.so (path-add-extension label (system-type 'so-suffix)))
+  (unless (system* (find-executable-path "cc")
+                   "-O3" "-march=native"
+                   sn.c
+                   "-shared" "-o" sn.so)
+    (error 'compile-simulate! "Compilation failed"))
 
+  (define sn-lib (ffi-lib sn.so))
 
-        (printf "\t; Work\n")
-        (define cur-ver 0)
-        (tree-walk
-         sn
-         (match-lambda
-           [(debug f) (void)]
-           [(nand a b o)
-            (define last-ver cur-ver)
-            (set! cur-ver (add1 cur-ver))
-            (define next-ver cur-ver)
+  (define WIRES-ptr (ffi-obj-ref "WIRES" sn-lib))
 
-            (define a-idx (hash-ref Wire->Idx a))
-            (define b-idx (hash-ref Wire->Idx b))
-            (define o-idx (hash-ref Wire->Idx o))
-            (define a-ver (hash-ref Wire->Ver a))
-            (define b-ver (hash-ref Wire->Ver b))
+  (define WIRES (make-cvector* WIRES-ptr _wire_t HOW-MANY-WIRE-VARS))
+  (for ([i (in-range HOW-MANY-WIRE-VARS)])
+    (cvector-set! WIRES i 0))
+  
+  (define cycle! (get-ffi-obj "cycle" sn-lib (_fun -> _void)))
 
-            (printf "\t%w_~a_~an = and i1 %w_~a_~a, %w_~a_~a\n"
-                    o-idx next-ver a-idx a-ver b-idx b-ver)
-            (printf "\t%w_~a_~a = xor i1 %w_~a_~an, 1\n"
-                    o-idx next-ver o-idx next-ver)
+  (define flat-vwires (flatten visible-wires))
+  (define effective-vwires
+    (if (hash-has-key? Wire->A*B TRUE)
+      (cons TRUE flat-vwires)
+      flat-vwires))
+  (define flat-vw-refs
+    (for/list ([vw (in-list effective-vwires)])
+      (match-define (cons A B) (hash-ref Wire->A*B vw))
+      (vector vw A B)))
 
-            (hash-set! Wire->Ver o next-ver)]))
+  ;; xxx if expensive, pass a flag to decide if to copy or not
+  ;; xxx OR sort by A? and optimize read/write
+  (λ ()
+    ;; Write Visible Wires
+    (for ([ref (in-list flat-vw-refs)])
+      (match-define (vector vw A B) ref)
+      (define av (cvector-ref WIRES A))
+      (unless (eq? (bread vw) (bitwise-bit-set? av B))
+        (define M (arithmetic-shift 1 B))
+        (define nav (bitwise-xor av M))
+        #;(printf "av = ~a, B = ~a, M = ~a, nav = ~a \n"
+                (number->string av 2) B (number->string M 2) (number->string nav 2))
+        (cvector-set! WIRES A nav)))
 
-        (printf "\t; Store\n")
-        (define last-wires-ver 0)
-        (for ([(w idx) (in-hash Wire->Idx)]
-              [next-ver (in-naturals 1)])
-          (define w-last-ver (hash-ref Wire->Ver w))
-          (printf "\t%WIRES~a = insertvalue ~a %WIRES~a, i1 %w_~a_~a, ~a\n"
-                  next-ver WType last-wires-ver idx w-last-ver idx)
-          (set! last-wires-ver next-ver))
-        (printf "\tstore ~a %WIRES~a, ~a* @WIRES, align 1\n" WType last-wires-ver WType)
+    #;(for ([i (in-range HOW-MANY-WIRE-VARS)])
+      (printf "B~a = ~a\n" i (number->string (cvector-ref WIRES i) 2)))
+    (cycle!)
+    #;(for ([i (in-range HOW-MANY-WIRE-VARS)])
+      (printf "A~a = ~a\n" i (number->string (cvector-ref WIRES i) 2)))
 
-        (printf "\tret void\n")
-        (printf "}\n")))
-
-    ;; xxx compile directly to assembly
-
-    ))
+    ;; Read Visible Wires
+    (for ([ref (in-list flat-vw-refs)])
+      (match-define (vector vw A B) ref)
+      (unless (eq? vw TRUE)
+        (define av (cvector-ref WIRES A))
+        #;(eprintf "~a is ~a,~a is ~a\n" vw A B av)
+        (bwrite! vw (bitwise-bit-set? av B))))))
 
 ;; Exhaustive testing
 (module+ test
@@ -256,14 +276,26 @@
        (void)]))
   (define (chk-tt f ls)
     (with-chk (['f f])
-      (for ([l (in-list ls)])
-        (match-define (list ins outs) l)
-        (define inws (tt-make #t ins))
-        (define outws (tt-make #f outs))
-        (define n (apply f (append inws outws)))
-        (simulate! n)
-        (with-chk (['ins ins])
-          (tt-check-out outws outs))))))
+      ;; xxx don't always do this
+      (for ([compile? (in-list '(#f #t))])
+        (with-chk (['compile? compile?])
+          (for ([l (in-list ls)])
+            (match-define (list ins outs) l)
+            (define inws (tt-make #t ins))
+            (define outws (tt-make #f outs))
+            (define the-wires (append inws outws))
+            (define n (apply f the-wires))
+            (cond
+              [compile?
+               ;; XXX If this is commented out, it breaks
+               #;(printf "~v\n" l)
+               (define the-simulate!
+                 (compile-simulate! n #:visible-wires the-wires))
+               (the-simulate!)]
+              [else
+               (simulate! n)])
+            (with-chk (['ins ins])
+              (tt-check-out outws outs))))))))
 (module+ test
   (define-syntax (define-chk-num stx)
     (syntax-parse stx
@@ -944,13 +976,13 @@
 (provide HDL-DEBUG?
          Mt Net
          define-wires Wire Bundle
-         simulate! analyze
+         simulate! compile-simulate!
          bread bwrite!
          breadn bwriten!
          read-number write-number!
          TRUE FALSE GROUND
          Nand
-         
+
          Latch Latch/N
          Not Not/N
          Id Id/N

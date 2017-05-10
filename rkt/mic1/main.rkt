@@ -121,7 +121,8 @@
                           (path->string example-asm-path))]
                  [current-input-port
                   (open-input-string "abcdefghijklmnopqrstuvwxyz\n0123456789\n")]
-                 [current-output-port os])
+                 ;; xxx
+                 #;[current-output-port os])
     (main!))
   (match-define (list* sample in0 in1 more) (string-split (get-output-string os) "\n"))
   (chk sample "THIS IS A TEST STRING1\r"

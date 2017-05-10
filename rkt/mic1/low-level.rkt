@@ -137,11 +137,13 @@
     [MAR WordSize]
     [MBR WordSize])
   (define Registers
-    (build-list RegisterCount (λ (i) (Bundle WordSize))))
+    (for/list ([reg (in-list simulator-registers)])
+      (Bundle WordSize #:debug reg)))
+  (define simulator-wires
+    (list* MPC Read? Write? MAR MBR Registers))
   (define WireMap
-    (for/hasheq ([label
-                  (in-list simulator-vars)]
-                 [reg (in-list (list* MPC Read? Write? MAR MBR Registers))])
+    (for/hasheq ([label (in-list simulator-vars)]
+                 [reg (in-list simulator-wires)])
       (values label reg)))
   (define (register-set! r n)
     (write-number! (hash-ref WireMap r) n))
@@ -154,15 +156,19 @@
           Read? Write?
           MAR MBR))
 
-  (when (compile-MIC1-circuit?)
-    (analyze #:label "MIC1" the-mic1))
+  (define real-simulate!
+    (if (compile-MIC1-circuit?)
+      (compile-simulate! the-mic1
+                         #:label "MIC1"
+                         #:visible-wires simulator-wires)
+      (λ () (simulate! the-mic1))))
 
   (stepper register-read register-set!
            (λ ()
-             ;; It takes four rounds of simualtion for one machine
+             ;; It takes four rounds of simulation for one machine
              ;; cycle
              (for ([subcycle (in-range 4)])
-               (simulate! the-mic1)))))
+               (real-simulate!)))))
 
 (provide
  (contract-out

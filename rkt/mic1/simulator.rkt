@@ -77,7 +77,6 @@
   (define UART-TX-D 4094)
   (define UART-TX-C 4095)
 
-  ;; XXX IO is really slow for some reason
   (simulator
    MicrocodeVec Memory r! r
    (λ (inform!)
