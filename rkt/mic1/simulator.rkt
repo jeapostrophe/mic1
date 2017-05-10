@@ -72,20 +72,63 @@
     ;; to be higher, etc.
     (image->memory (expt 2 (- WordSize 4)) WordSize MemoryImage))
 
+  (define UART-RX-D 4092)
+  (define UART-RX-C 4093)
+  (define UART-TX-D 4094)
+  (define UART-TX-C 4095)
+
+  ;; XXX IO is really slow for some reason
   (simulator
    MicrocodeVec Memory r! r
    (λ (inform!)
      (let loop ([readc 0] [writec 0])
        (step!)
 
-       (define next-readc (if (= 1 (r 'Read?)) (add1 readc) 0))
        (define next-writec (if (= 1 (r 'Write?)) (add1 writec) 0))
-       ;; xxx implement IO
        (when (= next-writec 2)
-         (vector-set! Memory (12bit (r 'MAR)) (r 'MBR))
+         (define addr (12bit (r 'MAR)))
+         (define val (r 'MBR))
+         (vector-set! Memory addr val)
+
+         ;; UART: TX is on and done and data written, so emit and swap
+         ;; D&B
+         (when (and (= (vector-ref Memory UART-TX-C) #b1010)
+                    (= addr UART-TX-D))
+           (vector-set! Memory UART-TX-C #b1001)
+           (write-byte (bitwise-bit-field val 0 8))
+           (flush-output)
+           (vector-set! Memory UART-TX-C #b1010))
+
+         ;; UART: Stablize control bytes
+         (define (uart-stabilize! c-addr default)
+           (define c (vector-ref Memory c-addr))
+           (when (and (bitwise-bit-set? c 3)
+                      (not (bitwise-bit-set? c 0))
+                      (not (bitwise-bit-set? c 1)))
+             (vector-set! Memory c-addr default)))
+         (uart-stabilize! UART-RX-C #b1001)
+         (uart-stabilize! UART-TX-C #b1010)
+
          (set! next-writec 0))
+
+       (define next-readc (if (= 1 (r 'Read?)) (add1 readc) 0))
        (when (= next-readc 2)
-         (r! 'MBR (vector-ref Memory (12bit (r 'MAR))))
+         (define addr (12bit (r 'MAR)))
+         (r! 'MBR (vector-ref Memory addr))
+         
+         ;; UART: RX is on and done and data read, so swap D & B
+         (when (and (= (vector-ref Memory UART-RX-C) #b1010)
+                    (= addr UART-RX-D))
+           (vector-set! Memory UART-RX-C #b1001))
+
+         ;; UART: RX is on and busy, and there's a char, so read it
+         ;; and enable D. This is in the read section because we
+         ;; assume the program is reading memory to poll.
+         (when (and (= (vector-ref Memory UART-RX-C) #b1001)
+                    (byte-ready?))
+           (vector-set! Memory UART-RX-D (read-byte))
+           (vector-set! Memory UART-RX-C #b1010))
+
          (set! next-readc 0))
 
        (inform!)

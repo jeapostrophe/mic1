@@ -32,17 +32,17 @@ top:    lodd cnt:
         subd c1:
         stod cnt:
         jzer over:
-	call rbsywt:
-	lodd 4092
+	    call rbsywt:
+	    lodd 4092
         stod 4094
-	call xbsywt:
+	    call xbsywt:
         jump top:
 over:   lodd cr:
         stod 4094
         call xbsywt:
         lodd nl:
         stod 4094
-	halt
+	    halt
 xbsywt: lodd 4095
         subd mask:
         jneg xbsywt:

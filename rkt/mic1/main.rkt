@@ -80,14 +80,8 @@
   (with-chk (['sim 'hl])
     (test-debugger-on-fib hl:make-MIC1-step)))
 
-(module+ main
-  (require racket/cmdline)
-
-  ;; xxx do something like this for testing
-  #;(when (zero? (vector-length (current-command-line-arguments)))
-      (current-command-line-arguments
-       (vector (path->string standard-prom-path)
-               (path->string example-asm-path))))
+(define (main!)
+  (local-require racket/cmdline)
 
   (define InitialPC 0)
   (define InitialSP 1024)
@@ -115,6 +109,27 @@
       InitialPC
       InitialSP))
    (debug-MIC1 start!)))
+
+(module+ test
+  (require racket/runtime-path
+           racket/string)
+  (define-runtime-path standard-prom-path "../../examples/prom.dat")
+  (define-runtime-path example-asm-path "../../examples/IO_str_and_echo.o")
+  (define os (open-output-string))
+  (parameterize ([current-command-line-arguments
+                  (vector (path->string standard-prom-path)
+                          (path->string example-asm-path))]
+                 [current-input-port
+                  (open-input-string "abcdefghijklmnopqrstuvwxyz\n0123456789\n")]
+                 [current-output-port os])
+    (main!))
+  (match-define (list* sample in0 in1 more) (string-split (get-output-string os) "\n"))
+  (chk sample "THIS IS A TEST STRING1\r"
+       in0 "abcdefghijklmnopqrstuvwxyz"
+       in1 "01\r"))
+
+(module+ main
+  (main!))
 
 ;; xxx add microcompiler
 ;; xxx add macroassembler
