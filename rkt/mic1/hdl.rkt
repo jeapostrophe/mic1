@@ -49,9 +49,6 @@
 (define GROUND (Wire #:debug 'GROUND))
 
 (define (Nand a b o)
-  (unless (wire? a) (error 'Nand "Expected wire for a, got: ~v" a))
-  (unless (wire? b) (error 'Nand "Expected wire for b, got: ~v" b))
-  (unless (wire? o) (error 'Nand "Expected wire for o, got: ~v" o))
   (when (or (eq? o TRUE) (eq? o FALSE)) (error 'Nand "Cannot write to constants"))
   (when (or (eq? a GROUND) (eq? b GROUND)) (error 'Nand "Cannot read ground"))
   (nand a b o))
@@ -264,7 +261,6 @@
       (match-define (cons A B) (hash-ref Wire->A*B vw))
       (vector vw A B)))
 
-  ;; xxx sort by A? and optimize read/write
   (define (simulate-once write? read?)
     ;; Write Visible Wires
     (when write?
@@ -310,7 +306,6 @@
        (void)]))
   (define (chk-tt f ls)
     (with-chk (['f f])
-      ;; xxx don't always do this
       (for ([compile? (in-list '(#f #t))])
         (with-chk (['compile? compile?])
           (for ([l (in-list ls)])
@@ -632,8 +627,6 @@
 (define (Adder/N A B Cin Cout Sum)
   (define N (length A))
   (when (zero? N) (error 'Adder/N "Cannot add to 0 bits"))
-  (unless (= N (length B) (length Sum))
-    (error 'Adder/N "sizes mismatch"))
   (define-wires [Cs (sub1 N)])
   (define Cins (cons Cin Cs))
   (define Couts (snoc Cs Cout))
@@ -673,8 +666,6 @@
   (define N (length A))
   (when (zero? N)
     (error 'Increment/N "Cannot increment 0 bits"))
-  (unless (= N (length Inc))
-    (error 'Increment/N "Output is not same length as input"))
   (define-wires [Cs (sub1 N)])
   (define B (cons TRUE Cs))
   (define C (snoc Cs Cout))
@@ -703,8 +694,6 @@
 
 (define (Shifter/N Left? Right? In Out)
   (define N (length In))
-  (unless (= N (length Out))
-    (error 'Shifter/N "In/Out do not match in length"))
   (define (tser l) (reverse (rest (reverse l))))
   (define Lefts (cons FALSE (tser In)))
   (define Rights (snoc (rest In) FALSE))
@@ -737,9 +726,6 @@
 
 (define (Decoder/N Which Outs)
   (define N (length Which))
-  (unless (= (length Outs) (expt 2 N))
-    (error 'Decoder/N "Insufficient output signals: N=~v, ~v should be ~v"
-           N (length Outs) (expt 2 N)))
   (let loop ([N N] [Which (reverse Which)] [Outs Outs])
     (cond
       [(= N 1) (Decoder (first Which) (first Outs) (second Outs))]
@@ -785,8 +771,6 @@
 (define (Clock Os)
   (define 2N (length Os))
   (define N (log2 2N))
-  (unless (and N (> N 0))
-    (error 'Clock "Must receive 2^n, n>0 output signals"))
   (Net ([CodeIn N] [CodeOut N])
        (Decoder/N CodeIn Os)
        (Increment/N CodeOut GROUND CodeIn)
@@ -837,8 +821,6 @@
 (define (ROM vals Addr Value)
   (define A (ROM-AddrSpace vals))
   (define W (length Value))
-  (unless (= A (length Addr))
-    (error 'ROM "Addr wrong bits: got ~v, expected ~v" (length Addr) A))
 
   ;; The ROM is 2^A different values in the `vals` list. First, we
   ;; decode the address into a signal that says "Get value i".
@@ -888,14 +870,7 @@
          i)))))
 
 (define (Cut/N Src Dst)
-  (define FS (flatten Src))
-  (define SrcN (length FS))
-  (define FD (flatten Dst))
-  (define DstN (length FD))
-  (unless (= SrcN DstN)
-    (error 'Cut/N "Source(~v) and dest(~v) are not same length"
-           SrcN DstN))
-  (Id/N FS FD))
+  (Id/N (flatten Src) (flatten Dst)))
 (module+ test
   (chk-tt Cut/N
           '([(( 0 1  0  1 1 0  0 1))
@@ -910,7 +885,7 @@
     (unless (= (length R) ValueN)
       (error who "Bit mismatch in register/value"))))
 
-;; xxx See if this can be improved based on the following system:
+;; NOTE See if this can be improved based on the following system:
 ;; http://sce2.umkc.edu/csee/hieberm/281_new/lectures/seq-storage-components/seq-storage.html
 (define (RegisterSet Signal In Which Registers)
   (check-RegisterArgs 'RegisterSet In Which Registers)
@@ -1006,36 +981,129 @@
    (λ ()
      (printf "~a: ~v\n" lab (list (cons 'w (read-number w)) ...)))))
 
-;; XXX Contracts and docs
-(provide HDL-DEBUG?
-         Mt Net
-         define-wires Wire Bundle
-         simulate! compile-simulate!
-         bread bwrite!
-         breadn bwriten!
-         read-number write-number!
-         TRUE FALSE GROUND
-         Nand
-
-         Latch Latch/N
-         Not Not/N
-         Id Id/N
-         And And/N And/wb And*
-         Or Or*
-         Nor Xor
-         Xnor
-         Mux Mux/N
-         Demux
-         Half-Adder Full-Adder Adder/N
-         Increment/N
-         Shifter Shifter/N
-         Decoder Decoder/N
-         Clock
-         ROM-AddrSpace ROM
-         Cut/N
-         RegisterSet
-         RegisterRead
-         IsZero? IsNegative?)
+(require racket/contract/base)
+(define (treeof/c x) (or/c x list?))
+(define network/c (treeof/c nand?))
+(provide
+ Net define-wires
+ (contract-out
+  [HDL-DEBUG? (parameter/c boolean?)]
+  [Mt network/c]
+  [Wire (->* () (#:debug any/c) wire?)]
+  [Bundle
+   (->* (exact-nonnegative-integer?)
+        (#:debug any/c)
+        (listof wire?))]
+  [Nand (-> wire? wire? wire? network/c)]
+  [TRUE wire?]
+  [FALSE wire?]
+  [GROUND wire?]
+  [bread (-> wire? boolean?)]
+  [bwrite! (-> wire? boolean? void?)]
+  [simulate! (-> network/c void?)]
+  [breadn (-> wire? (or/c 1 0))]
+  [bwriten! (-> wire? (or/c 1 0) void?)]
+  [read-number
+   (-> (or/c wire? (listof wire?))
+       exact-nonnegative-integer?)]
+  [write-number!
+   (-> (or/c wire? (listof wire?))
+       exact-nonnegative-integer?
+       void?)]
+  [compile-simulate!
+   (->* (network/c)
+        (#:visible-wires (treeof/c wire?)
+         #:label (or/c #t #f string?))
+        (-> boolean? boolean?
+            void?))]
+  [Latch (-> wire? wire? wire? network/c)]
+  [Latch/N (->i ([s wire?] [I (listof wire?)] [O (listof wire?)])
+                #:pre (I O) (= (length I) (length O))
+                [n network/c])]
+  [Not (-> wire? wire? network/c)]
+  [Not/N (->i ([I (listof wire?)] [O (listof wire?)])
+              #:pre (I O) (= (length I) (length O))
+              [n network/c])]
+  [Id (-> wire? wire? network/c)]
+  [Id/N (->i ([I (listof wire?)] [O (listof wire?)])
+             #:pre (I O) (= (length I) (length O))
+             [n network/c])]
+  [And (-> wire? wire? wire? network/c)]
+  [And/N (->i ([A (listof wire?)] [B (listof wire?)] [O (listof wire?)])
+              #:pre (A B O) (= (length A) (length B) (length O))
+              [n network/c])]
+  [And* (-> (listof wire?) wire? network/c)]
+  [Or (-> wire? wire? wire? network/c)]
+  [Or* (-> (listof wire?) wire? network/c)]
+  [Nor (-> wire? wire? wire? network/c)]
+  [Xor (-> wire? wire? wire? network/c)]
+  [Xnor (-> wire? wire? wire? network/c)]
+  [Mux (-> wire? wire? wire? wire? network/c)]
+  [Mux/N (->i ([A (listof wire?)] [B (listof wire?)] [s wire?] [O (listof wire?)])
+              #:pre (A B O) (= (length A) (length B) (length O))
+              [n network/c])]
+  [Demux (-> wire? wire? wire? wire? network/c)]
+  [Full-Adder (-> wire? wire? wire? wire? wire? network/c)]
+  [Adder/N (->i ([A (listof wire?)] [B (listof wire?)]
+                 [Cin wire?] [Cout wire?]
+                 [O (listof wire?)])
+                #:pre (A B O) (= (length A) (length B) (length O))
+                [n network/c])]
+  [Half-Adder (-> wire? wire? wire? wire? network/c)]
+  [Increment/N (->i ([A (listof wire?)] [Cout wire?]
+                     [O (listof wire?)])
+                    #:pre (A O) (= (length A) (length O))
+                    [n network/c])]
+  [Shifter (->i ([Left? wire?] [Right? wire?]
+                 [L wire?] [Z wire?] [R wire?] [O wire?])
+                [n network/c])]
+  [Shifter/N (->i ([Left? wire?] [Right? wire?]
+                   [I (listof wire?)] [O (listof wire?)])
+                  #:pre (I O) (= (length I) (length O))
+                  [n network/c])]
+  [Decoder (-> wire? wire? wire? network/c)]
+  [And/wb (->i ([w0 wire?] [bi (listof wire?)] [bo (listof wire?)])
+               #:pre (bi bo) (= (length bi) (length bo))
+               [n network/c])]
+  [Decoder/N (->i ([Which (listof wire?)] [Outs (listof wire?)])
+                  #:pre (Which Outs) (= (length Outs) (expt 2 (length Which)))
+                  [n network/c])]
+  [Clock (->i ([Os (listof wire?)])
+              #:pre (Os) (let ([N (log2 (length Os))]) (and N (> N 0)))
+              [n network/c])]
+  [ROM-AddrSpace (-> (listof exact-nonnegative-integer?) exact-nonnegative-integer?)]
+  [ROM (->i ([vals (listof exact-nonnegative-integer?)]
+             [Addr (listof wire?)]
+             [Value (listof wire?)])
+            #:pre (vals Addr) (= (ROM-AddrSpace vals) (length Addr))
+            #:pre (vals Value)
+            (let ([N (length Value)])
+              (for/and ([v (in-list vals)])
+                (<= (integer-length v) N)))
+            [n network/c])]
+  [Cut/N (->i ([S (treeof/c wire?)] [D (treeof/c wire?)])
+              #:pre (S D) (= (length (flatten S)) (length (flatten D)))
+              [n network/c])]
+  [RegisterSet
+   (->i ([Signal wire?] [In (listof wire?)] [Which (listof wire?)]
+         [Registers (listof (listof wire?))])
+        #:pre (Which Registers) (= (length Which) (length Registers))
+        #:pre (In Registers)
+        (let ([N (length In)])
+          (for/and ([R (in-list Registers)])
+            (= (length R) N)))
+        [n network/c])]
+  [RegisterRead
+   (->i ([Registers (listof (listof wire?))] [Which (listof wire?)]
+         [Out (listof wire?)])
+        #:pre (Which Registers) (= (length Which) (length Registers))
+        #:pre (Out Registers)
+        (let ([N (length Out)])
+          (for/and ([R (in-list Registers)])
+            (= (length R) N)))
+        [n network/c])]
+  [IsZero? (-> (listof wire?) wire? network/c)]
+  [IsNegative? (-> (listof wire?) wire? network/c)]))
 (module+ test
   (collect-garbage)
   (provide chk-tt define-chk-num simulate&chk))

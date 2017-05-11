@@ -178,7 +178,6 @@
         (register A)
         ADDR))
 
-;; xxx rewrite this to use math
 (define (μwrite ns)
   (match-define (list AMUX COND ALU SH MBR MAR RD WR ENC C B A ADDR) ns)
   (define << arithmetic-shift)
