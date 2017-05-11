@@ -89,13 +89,17 @@
 
   (define InitialPC 0)
   (define InitialSP 1024)
-  (define make-MIC1-step ll:make-MIC1-step)
+  (define make-MIC1-step hl:make-MIC1-step)
+  (ll:compile-MIC1-circuit? "MIC1")
   (command-line
    #:program "mic1"
    #:once-any
-   [("--ll") "Use low-level (gate based) simulator (default)"
+   [("--ll") "Use low-level (gate based) simulator with compiled CPU"
     (set! make-MIC1-step ll:make-MIC1-step)]
-   [("--hl") "Use high-level (algorithmic) simulator"
+   [("--lli") "Use low-level (gate based) simulator with interpreted CPU"
+    (set! make-MIC1-step ll:make-MIC1-step)
+    (ll:compile-MIC1-circuit? #f)]   
+   [("--hl") "Use high-level (algorithmic) simulator (default)"
     (set! make-MIC1-step hl:make-MIC1-step)]
    #:once-each
    [("--pc") pc-str "Initial Program Counter (default: 0)"
@@ -103,8 +107,7 @@
    [("--sp") sp-str "Initial Stack Pointer (default: 1024)"
     (set! InitialSP (string->number sp-str))]
    #:args (microcode-path memory-image-path)
-
-   (ll:compile-MIC1-circuit? "MIC1")
+   
    (define start!
      (make-MIC1-simulator
       make-MIC1-step
@@ -113,29 +116,6 @@
       InitialPC
       InitialSP))
    (debug-MIC1 start!)))
-
-;; XXX For some reason the input port stuff here is broken
-;;
-;; Make a Makefile example to test command line
-#;
-(module+ test
-  (require racket/runtime-path
-           racket/string)
-  (define-runtime-path standard-prom-path "../../examples/prom.dat")
-  (define-runtime-path example-asm-path "../../examples/IO_str_and_echo.o")
-  (printf "Testing IO program\n")
-  (define os (open-output-string))
-  (parameterize ([current-command-line-arguments
-                  (vector (path->string standard-prom-path)
-                          (path->string example-asm-path))]
-                 [current-input-port
-                  (open-input-string "abcdefghijklmnopqrstuvwxyz\n0123456789\n")]
-                 [current-output-port os])
-    (main!))
-  (match-define (list* sample in0 in1 more) (string-split (get-output-string os) "\n"))
-  (chk sample "THIS IS A TEST STRING1\r"
-       in0 "abcdefghijklmnopqrstuvwxyz"
-       in1 "01\r"))
 
 (module+ main
   (main!))
