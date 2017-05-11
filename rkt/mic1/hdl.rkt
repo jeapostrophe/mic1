@@ -106,11 +106,8 @@
     [else
      (breadn B)]))
 
-;; Analysis
-
-;; xxx perform optimzations on the network? remove not not? remove
-;; duplication? represent an output wire as the nand and hash-cons
-;; those? iterate to fix-point?
+;; XXX Write an optimizer: Find Id and merge the wires, find
+;; duplicated gates and combine them.
 
 (define compiler-executor (make-will-executor))
 (define (compiler-executor-go)
@@ -130,15 +127,21 @@
   (define Gates 0)
   (define WireUses (make-hasheq))
   (define WireSets (make-hasheq))
+
+  (define gates null)
   (tree-walk
    sn
    (match-lambda
      [(debug f) (void)]
      [(nand a b o)
+      (set! gates (cons (cons a b) gates))
       (set! Gates (add1 Gates))
       (for ([x (in-list (list a b o))])
         (hash-update! WireUses x add1 0))
       (hash-update! WireSets o add1 0)]))
+
+  (define dedupe-gates (remove-duplicates gates))
+  (define Duplicates (- Gates (length dedupe-gates)))
 
   (for ([(w c) (in-hash WireSets)]
         #:unless (eq? w GROUND)
@@ -164,8 +167,8 @@
 
   (define temp? (not label))
   (unless temp?
-    (eprintf "~a has ~a NAND gates and ~a wires\n"
-             label Gates (hash-count WireUses)))
+    (eprintf "~a has ~a NAND gates (~a duplicates) and ~a wires\n"
+             label Gates Duplicates (hash-count WireUses)))
   (define the-label
     (if temp?
       (format "HDL-Temp-~a"  (current-milliseconds))
