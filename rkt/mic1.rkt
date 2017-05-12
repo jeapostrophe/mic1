@@ -4,7 +4,7 @@
          racket/list
          racket/path
          racket/runtime-path
-         ;; xxx make private (& make package)
+         ;; xxx make private
          "lib.rkt"
          "simulator.rkt"
          (prefix-in ll: "low-level.rkt")
@@ -87,13 +87,14 @@
     [x (error 'mic1 "Unknown memory extension: ~v" x)]))
 
 (define (main!)
-  (local-require racket/cmdline)
+  (local-require racket/cmdline
+                 raco/command-name)
 
   (define InitialPC 0)
   (define InitialSP 1024)
   (define make-MIC1-step hl:make-MIC1-step)
   (command-line
-   #:program "mic1"
+   #:program (short-program+command-name)
    #:once-any
    [("--ll") "Use low-level (gate based) simulator with compiled CPU"
     (set! make-MIC1-step ll:make-MIC1-step)

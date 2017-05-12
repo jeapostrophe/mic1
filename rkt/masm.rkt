@@ -208,9 +208,10 @@
   (call-with-input-file p asm->symtab+image/port))
 
 (define (main!)
-  (local-require racket/cmdline)
+  (local-require racket/cmdline
+                 raco/command-name)
   (command-line
-   #:program "masm"
+   #:program (short-program+command-name)
    #:args (asm-path)
    (with-output-to-file (path-replace-extension asm-path #".o")
      #:exists 'replace

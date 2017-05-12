@@ -262,9 +262,10 @@
   (call-with-input-file p microcode->microcode-image/port))
 
 (define (main!)
-  (local-require racket/cmdline)
+  (local-require racket/cmdline
+                 raco/command-name)
   (command-line
-   #:program "mcc"
+   #:program (short-program+command-name)
    #:args (microcode-path)
    (with-output-to-file (path-replace-extension microcode-path #".prom")
      #:exists 'replace
