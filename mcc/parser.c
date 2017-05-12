@@ -127,8 +127,8 @@ void aluexp_p(enreg olddreg)
 		}
 		else
 		{
-			genabreg(dreg);
 			genabreg(olddreg);
+			genabreg(dreg);
 		}
 	}
 	else
@@ -170,8 +170,8 @@ void aluexp()
 					}
 					else
 					{
-						genabreg(dreg);
 						genabreg(olddreg);
+						genabreg(dreg);
 					}
 					match(rparen);
 					break;
