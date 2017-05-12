@@ -4,7 +4,7 @@
          racket/list
          racket/path
          racket/runtime-path
-         ;; xxx make private
+         ;; xxx make private and move this whole directory out one (& make package)
          "lib.rkt"
          "simulator.rkt"
          (prefix-in ll: "low-level.rkt")
