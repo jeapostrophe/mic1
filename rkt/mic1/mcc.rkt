@@ -9,10 +9,7 @@
          (prefix-in : parser-tools/lex-sre)
          "simulator.rkt")
 (module+ test
-  (require chk)
-  (require racket/runtime-path)
-  (define-runtime-path macro-v1.mc
-    "../../examples/macro-v1.mc"))
+  (require chk))
 
 (struct alu-op () #:transparent)
 (struct alu-plus alu-op (a-bus b-bus) #:transparent)
@@ -81,13 +78,6 @@
                     (char=? c #\}))
           (loop)))
       (return-without-pos (mc-lex input-port)))]))
-(module+ test
-  #;(chk
-     (map position-token-token
-          (call-with-input-file macro-v1.mc
-            (λ (ip)
-              (for/list ([i (in-range 25)]) (mc-lex ip)))))
-     empty))
 
 (define mc-parse
   (parser
@@ -289,17 +279,26 @@
   (main!))
 (module+ test
   (require racket/file)
-  (define-runtime-path macro-v1.prom.expected
-    "../../examples/macro-v1.prom.expected")
-  (parameterize ([current-command-line-arguments
-                  (vector (path->string macro-v1.mc))])
-    (main!))
-  (define macro-v1.prom
-    (path-replace-extension macro-v1.mc #".prom"))
-  (for ([actual (in-list (file->lines macro-v1.prom))]
-        [expected (in-list (file->lines macro-v1.prom.expected))]
-        [i (in-naturals)])
-    (with-chk (['i i]) (chk actual expected))))
+  
+  (define (check-compilation mc)
+    (parameterize ([current-command-line-arguments
+                    (vector (path->string mc))])
+      (main!))
+    (define macro-v1.prom
+      (path-replace-extension mc #".prom"))
+    (for ([actual (in-list (file->lines macro-v1.prom))]
+          [expected (in-list (file->lines
+                              (path-replace-extension mc
+                                                      #".prom.expected")))]
+          [i (in-naturals)])
+      (with-chk (['i i]) (chk actual expected))))
+
+  (require racket/runtime-path)
+  (define-runtime-path macro-v1.mc "../../examples/macro-v1.mc")
+  (define-runtime-path fib.mc "../../examples/fib.mc")
+  
+  (check-compilation macro-v1.mc)
+  (check-compilation fib.mc))
 
 (provide
  (contract-out

@@ -24,12 +24,12 @@
                ['an (number->string an 2)]
                ['en (number->string en 2)])
       (chk an en)))
-  
-  ;; MCC: ac := ac + mbr; goto START; 
+
+  ;; MCC: ac := ac + mbr; goto START;
   (chk-μdec #b11100000000100010000000100000000
             ;; This is bad because B=PC and A=MBR, so the op is ac := mbr + pc
             '(MBR J! + NS NB NA NR NW ENC AC PC AC 0))
-  ;; MCC: ac := mbr + ac; goto START; 
+  ;; MCC: ac := mbr + ac; goto START;
   (chk-μdec #b11100000000100010001000000000000
             '(MBR J! + NS NB NA NR NW ENC AC AC PC 0))
   (chk-μenc '(MBR J! + NS NB NA NR NW ENC AC AC PC 0)
@@ -319,3 +319,32 @@
 
 (module+ test
   (provide FIB-MICRO-IMAGE))
+
+;; Test commands
+(module+ test
+  (require racket/system
+           racket/runtime-path)
+
+  (define-runtime-path macro-v1.mc "../../examples/macro-v1.mc")
+  (define-runtime-path macro-v1.prom "../../examples/macro-v1.prom")
+  (define-runtime-path fib.mc "../../examples/fib.mc")
+  (define-runtime-path fib.prom "../../examples/fib.prom")
+  (define-runtime-path fib.o "../../examples/fib.o")
+  (define-runtime-path adder.s "../../examples/adder.s")
+  (define-runtime-path adder.o "../../examples/adder.o")
+  (define-runtime-path IO_str_and_echo.o "../../examples/IO_str_and_echo.o")
+  (define-runtime-path mic1.rkt "mic1.rkt")
+  
+  (define (run-mic1! args #:in [inf #f])
+    (parameterize ([current-input-port
+                    (if inf (open-input-file inf) (current-input-port))])
+      (apply system* mic1.rkt args)))
+
+  (run-mic1! (list "--hl" macro-v1.mc adder.o))
+  (run-mic1! (list "--hl" macro-v1.prom adder.s))
+  (run-mic1! (list "--hl" macro-v1.mc adder.s))
+  (run-mic1! (list "--hl" fib.mc fib.o))
+  (for ([mode (in-list '("--lli" "--ll" "--hl"))])
+    (run-mic1! (list mode macro-v1.prom IO_str_and_echo.o) #:in macro-v1.mc)
+    (run-mic1! (list mode macro-v1.prom adder.o))
+    (run-mic1! (list mode fib.prom adder.o))))
