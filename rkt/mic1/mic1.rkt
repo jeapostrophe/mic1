@@ -81,7 +81,7 @@
 (define (file->memory-image p)
   (local-require "masm.rkt")
   (match (path-get-extension p)
-    [#".s" (asm->image/file p)]
+    [#".s" (let-values ([(s i) (asm->symtab+image/file p)]) i)]
     [#".o" (file->image p)]
     [x (error 'mic1 "Unknown memory extension: ~v" x)]))
 

@@ -79,7 +79,7 @@
           (loop)))
       (return-without-pos (mc-lex input-port)))]))
 
-(define mc-parse
+(define mc-parser
   (parser
    (src-pos)
    (tokens MC-TOKS MC-MT-TOKS)
@@ -88,7 +88,7 @@
    (error
     (lambda (a name val start end)
       (raise-read-error
-       (format "mc-parse: unexpected token ~a~a" name
+       (format "mc-parser: unexpected token ~a~a" name
                (if val (format "(~v)" val) ""))
        (file-path)
        (position-line start)
@@ -132,7 +132,7 @@
   (port-count-lines! ip)
   (define on (object-name ip))
   (parameterize ([file-path on])
-    (mc-parse (λ () (mc-lex ip)))))
+    (mc-parser (λ () (mc-lex ip)))))
 
 (define (hash-set1 ht k v)
   (define (up old)
@@ -294,11 +294,11 @@
       (with-chk (['i i]) (chk actual expected))))
 
   (require racket/runtime-path)
-  (define-runtime-path macro-v1.mc "../../examples/macro-v1.mc")
-  (define-runtime-path fib.mc "../../examples/fib.mc")
-  
-  (check-compilation macro-v1.mc)
-  (check-compilation fib.mc))
+  (define-syntax-rule (static-check-compilation p)
+    (begin (define-runtime-path tmp p)
+           (check-compilation tmp)))
+  (static-check-compilation "../../examples/macro-v1.mc")
+  (static-check-compilation "../../examples/fib.mc"))
 
 (provide
  (contract-out

@@ -42,4 +42,7 @@
        exact-integer?)]
   [numbers->bits
    (-> exact-integer? (listof exact-integer?)
-       (listof (listof boolean?)))]))
+       (listof (listof boolean?)))]
+  [number->bits
+   (-> exact-integer? exact-integer?
+       (listof boolean?))]))
