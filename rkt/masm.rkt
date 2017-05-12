@@ -242,9 +242,9 @@
   (define-syntax-rule (static-check-compilation p)
     (begin (define-runtime-path tmp p)
            (check-compilation tmp)))
-  (static-check-compilation "../../examples/test.s")
-  (static-check-compilation "../../examples/IO_str_and_echo.s")
-  (static-check-compilation "../../examples/adder.s"))
+  (static-check-compilation "../examples/test.s")
+  (static-check-compilation "../examples/IO_str_and_echo.s")
+  (static-check-compilation "../examples/adder.s"))
 
 (provide
  (contract-out

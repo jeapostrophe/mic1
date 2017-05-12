@@ -325,14 +325,14 @@
   (require racket/system
            racket/runtime-path)
 
-  (define-runtime-path macro-v1.mc "../../examples/macro-v1.mc")
-  (define-runtime-path macro-v1.prom "../../examples/macro-v1.prom")
-  (define-runtime-path fib.mc "../../examples/fib.mc")
-  (define-runtime-path fib.prom "../../examples/fib.prom")
-  (define-runtime-path fib.o "../../examples/fib.o")
-  (define-runtime-path adder.s "../../examples/adder.s")
-  (define-runtime-path adder.o "../../examples/adder.o")
-  (define-runtime-path IO_str_and_echo.o "../../examples/IO_str_and_echo.o")
+  (define-runtime-path macro-v1.mc "../examples/macro-v1.mc")
+  (define-runtime-path macro-v1.prom "../examples/macro-v1.prom")
+  (define-runtime-path fib.mc "../examples/fib.mc")
+  (define-runtime-path fib.prom "../examples/fib.prom")
+  (define-runtime-path fib.o "../examples/fib.o")
+  (define-runtime-path adder.s "../examples/adder.s")
+  (define-runtime-path adder.o "../examples/adder.o")
+  (define-runtime-path IO_str_and_echo.o "../examples/IO_str_and_echo.o")
   (define-runtime-path mic1.rkt "mic1.rkt")
   
   (define (run-mic1! args #:in [inf #f])
