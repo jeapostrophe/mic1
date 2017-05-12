@@ -13,5 +13,5 @@ tar: clean
 
 test:
 	cd mcc && $(MAKE)
-	cd examples && $(MAKE) prom.dat
-	diff -u examples/prom.dat examples/prom.dat.expected 
+	cd examples && $(MAKE) macro-v1.prom
+	diff -u examples/macro-v1.prom examples/macro-v1.prom.expected 

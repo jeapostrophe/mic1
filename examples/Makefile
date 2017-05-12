@@ -1,15 +1,18 @@
-all: prom.dat adder.o help
+all: check-prom adder.o help
 
 help:
 	@echo make adder.test
 
-prom.dat: prom.mc ../mcc/mcc
-	../mcc/mcc < prom.mc > $@
+check-prom: macro-v1.prom
+	diff -u $^ macro-v1.prom.expected
 
-%.test: prom.dat %.o
+%.prom: %.mc ../mcc/mcc
+	../mcc/mcc < $< > $@
+
+%.test: macro-v1.prom %.o
 	../mic1/mic1 $^ 0 1024
 
-%.o: %.asm
+%.o: %.s
 	../masm/masm < $^ > $@
 
 
