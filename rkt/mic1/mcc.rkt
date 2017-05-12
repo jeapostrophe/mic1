@@ -32,8 +32,7 @@
 (struct mc-rd mc-comp () #:transparent)
 (struct mc-wr mc-comp () #:transparent)
 
-;; xxx include srcloc
-(struct mc-inst (comps) #:transparent)
+(struct mc-inst (line comps) #:transparent)
 (struct mc-label (lab) #:transparent)
 
 (define-tokens MC-TOKS (LABEL REG))
@@ -109,8 +108,10 @@
    (grammar
     (Program [() empty]
              [(NL Program) $2]
-             [(LABEL COLON NL Program) (cons (mc-label $1) $4)]
-             [(Instruction NL Program) (cons (mc-inst $1) $3)])
+             [(LABEL COLON NL Program)
+              (cons (mc-label $1) $4)]
+             [(Instruction NL Program)
+              (cons (mc-inst (position-line $1-start-pos) $1) $3)])
     (Instruction [() empty]
                  [(InstComp SEMI Instruction)
                   (cons $1 $3)])
@@ -145,7 +146,7 @@
     (if old
       (if (eq? old v)
         v
-        (error 'μcompile "Incompatible ~a: ~a vs ~a" k old v))
+        (error 'μcompile "L~a: Incompatible ~a: ~a vs ~a" (μcompile-line) k old v))
       v))
   (hash-update ht k up #f))
 
@@ -196,15 +197,19 @@
     [(mc-mar b-bus)
      (hash-set1 (μcompile-b-bus L b-bus) 'MAR 'MAR)]
     [(mc-if cond label)
-     (hash-set1 (hash-set1 L 'COND cond)
-                'ADDR
-                (hash-ref label->idx label
-                          (λ ()
-                            (error 'μcompile "Unknown label: ~v" label))))]
+     (hash-set1
+      (hash-set1 L 'COND cond)
+      'ADDR
+      (hash-ref label->idx label
+                (λ ()
+                  (error 'μcompile "L~a: Unknown label: ~v"
+                         (μcompile-line) label))))]
     [(mc-rd) (hash-set1 L 'RD 'RD)]
     [(mc-wr) (hash-set1 L 'WR 'WR)]))
 
+(define μcompile-line (make-parameter #f))
 (define (μcompile label->idx m)
+  (match-define (mc-inst line cs) m)
   (define DEFAULT
     (hasheq 'AMUX 'A  'COND 'NJ
             'ALU  '+  'SH   'NS
@@ -212,8 +217,9 @@
             'RD   'NR 'WR   'NW 'ENC 'NC
             'C    'PC 'B    'PC 'A   'PC 'ADDR 0))
   (define COMPILED
-    (for/fold ([L (hasheq)]) ([comp (in-list (mc-inst-comps m))])
-      (μcompile-comp label->idx L comp)))
+    (parameterize ([μcompile-line line])
+      (for/fold ([L (hasheq)]) ([comp (in-list cs)])
+        (μcompile-comp label->idx L comp))))
   (define FINAL
     (for/hasheq ([(k def) (in-hash DEFAULT)])
       (values k (or (hash-ref COMPILED k #f) def))))
@@ -223,7 +229,7 @@
   (define std (hash "START" 0 "END" 100))
   (define-syntax-rule (chk-μc [in out] ...)
     (begin (chk (μcompile std in) out) ...))
-  (chk-μc [(mc-inst (list (mc-mar "pc") (mc-rd)))
+  (chk-μc [(mc-inst 0 (list (mc-mar "pc") (mc-rd)))
            (list 'A 'NJ '+ 'NS 'NB 'MAR 'RD 'NW 'NC 'PC 'PC 'PC 0)]))
 
 (define (microcode->microcode-image mc)
@@ -233,7 +239,7 @@
       (match m
         [(mc-label lab)
          (values (hash-set ht lab i) i)]
-        [(mc-inst _)
+        [(mc-inst _ _)
          (values ht (add1 i))])))
   (for/list ([m (in-list mc)]
              #:when (mc-inst? m))
