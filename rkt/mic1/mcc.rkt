@@ -27,6 +27,7 @@
 (struct mc-comp () #:transparent)
 (struct mc-setc mc-comp (c-bus sh) #:transparent)
 (struct mc-alu mc-comp (alu) #:transparent)
+(struct mc-mbr mc-comp (sh) #:transparent)
 (struct mc-mar mc-comp (b-bus) #:transparent)
 (struct mc-if mc-comp (cond addr) #:transparent)
 (struct mc-rd mc-comp () #:transparent)
@@ -115,8 +116,9 @@
     (Instruction [() empty]
                  [(InstComp SEMI Instruction)
                   (cons $1 $3)])
-    (InstComp [(MAR SET REG) (mc-mar $3)]
-              [(CExpr SET ShExpr) (mc-setc $1 $3)]
+    (InstComp [(MAR SET BExpr) (mc-mar $3)]
+              [(REG SET ShExpr) (mc-setc $1 $3)]
+              [(MBR SET ShExpr) (mc-mbr $3)]
               [(ALU SET AluExpr) (mc-alu $3)]
               [(IF Cond THEN GOTO LABEL) (mc-if $2 $5)]
               [(GOTO LABEL) (mc-if 'J! $2)]
@@ -133,13 +135,13 @@
              [(BAND LPAREN AExpr COMMA BExpr RPAREN) (alu-band $3 $5)])
     (AExpr [(REG) $1]
            [(MBR) 'mbr])
-    (BExpr [(REG) $1])
-    (CExpr [(REG) $1]
-           [(MBR) 'mbr]))))
+    (BExpr [(REG) $1]))))
 
 (define (microcode-parse ip)
   (port-count-lines! ip)
-  ((mc-parse (object-name ip)) (λ () (mc-lex ip))))
+  (define on (object-name ip))
+  (parameterize ([file-path on])
+    ((mc-parse on) (λ () (mc-lex ip)))))
 
 (define (hash-set1 ht k v)
   (define (up old)
@@ -159,11 +161,7 @@
 (define (μcompile-b-bus L b-bus)
   (μcompile-reg L 'B b-bus))
 (define (μcompile-c-bus L c-bus)
-  (match c-bus
-    ['mbr
-     (hash-set1 L 'MBR 'MBR)]
-    [_
-     (μcompile-reg L 'C c-bus)]))
+  (μcompile-reg L 'C c-bus))
 (define (μcompile-a-bus L a-bus)
   (match a-bus
     ['mbr
@@ -196,6 +194,8 @@
      (μcompile-alu L alu)]
     [(mc-mar b-bus)
      (hash-set1 (μcompile-b-bus L b-bus) 'MAR 'MAR)]
+    [(mc-mbr sh)
+     (hash-set1 (μcompile-sh L sh) 'MBR 'MBR)]
     [(mc-if cond label)
      (hash-set1
       (hash-set1 L 'COND cond)
@@ -227,10 +227,27 @@
        '(AMUX COND ALU SH MBR MAR RD WR ENC C B A ADDR)))
 (module+ test
   (define std (hash "START" 0 "END" 100))
-  (define-syntax-rule (chk-μc [in out] ...)
-    (begin (chk (μcompile std in) out) ...))
-  (chk-μc [(mc-inst 0 (list (mc-mar "pc") (mc-rd)))
-           (list 'A 'NJ '+ 'NS 'NB 'MAR 'RD 'NW 'NC 'PC 'PC 'PC 0)]))
+  (define (chk-μc in out)
+    (chk (μcompile std in) out))  
+  (chk-μc (mc-inst 0 (list (mc-mar "pc") (mc-rd)))
+          (list 'A 'NJ '+ 'NS 'NB 'MAR 'RD 'NW 'NC 'PC 'PC 'PC 0))
+
+  (define (chk-μcs in en)
+    (define p (microcode-parse (open-input-string (string-append in "\n"))))
+    (match-define (list mc) p)
+    (define ase (μcompile std mc))
+    (define ese (μdecode en))
+    (define an (μwrite (μencode ase)))
+    (with-chk (['in in]
+               ['p p]
+               ['ase ase]
+               ['ese ese]
+               ['an (number->string an 2)]
+               ['en (number->string an 2)])
+      (chk an en)))
+  (chk-μcs "mar := pc; rd;" #b00000000110000000000000000000000)
+  (chk-μcs "pc := pc + 1; rd;" #b00000000010100000110000000000000)
+  (chk-μcs "mar := ir; mbr := ac; wr;" #b00010001101000000011000100000000))
 
 (define (microcode->microcode-image mc)
   (define-values (label->idx max-addr)
@@ -241,6 +258,8 @@
          (values (hash-set ht lab i) i)]
         [(mc-inst _ _)
          (values ht (add1 i))])))
+  ;; NOTE I could emit label->idx and then get microlabels in debugger
+  ;; (this would be incompatible with the C version)
   (for/list ([m (in-list mc)]
              #:when (mc-inst? m))
     (μwrite (μencode (μcompile label->idx m)))))

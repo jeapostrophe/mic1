@@ -9,6 +9,12 @@
 
 ;; Encoding
 (module+ test
+  (define (chk-μdec an es)
+    (define as (μdecode an))
+    (with-chk (['mode 'μdec]
+               ['es es]
+               ['an (number->string an 2)])
+      (chk as es)))
   (define (chk-μenc se en)
     (define s (μencode se))
     (define an (μwrite s))
@@ -18,6 +24,16 @@
                ['an (number->string an 2)]
                ['en (number->string en 2)])
       (chk an en)))
+  
+  ;; MCC: ac := ac + mbr; goto START; 
+  (chk-μdec #b11100000000100010000000100000000
+            ;; This is bad because B=PC and A=MBR, so the op is ac := mbr + pc
+            '(MBR J! + NS NB NA NR NW ENC AC PC AC 0))
+  ;; MCC: ac := mbr + ac; goto START; 
+  (chk-μdec #b11100000000100010001000000000000
+            '(MBR J! + NS NB NA NR NW ENC AC AC PC 0))
+  (chk-μenc '(MBR J! + NS NB NA NR NW ENC AC AC PC 0)
+            #b11100000000100010001000000000000)
 
   (define FIB-MICRO-PROGRAM
     '(;; START/0: mar := sp; d := (1) + sp; wr
