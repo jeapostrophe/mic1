@@ -1,3 +1,4 @@
+#!/usr/bin/env racket
 #lang racket/base
 (require racket/list
          racket/match
@@ -88,7 +89,7 @@
               (for/list ([i (in-range 25)]) (mc-lex ip)))))
      empty))
 
-(define (mc-parse source-name)
+(define mc-parse
   (parser
    (src-pos)
    (tokens MC-TOKS MC-MT-TOKS)
@@ -99,7 +100,7 @@
       (raise-read-error
        (format "mc-parse: unexpected token ~a~a" name
                (if val (format "(~v)" val) ""))
-       source-name
+       (file-path)
        (position-line start)
        (position-col start)
        (position-offset start)
@@ -141,7 +142,7 @@
   (port-count-lines! ip)
   (define on (object-name ip))
   (parameterize ([file-path on])
-    ((mc-parse on) (λ () (mc-lex ip)))))
+    (mc-parse (λ () (mc-lex ip)))))
 
 (define (hash-set1 ht k v)
   (define (up old)
@@ -228,7 +229,7 @@
 (module+ test
   (define std (hash "START" 0 "END" 100))
   (define (chk-μc in out)
-    (chk (μcompile std in) out))  
+    (chk (μcompile std in) out))
   (chk-μc (mc-inst 0 (list (mc-mar "pc") (mc-rd)))
           (list 'A 'NJ '+ 'NS 'NB 'MAR 'RD 'NW 'NC 'PC 'PC 'PC 0))
 

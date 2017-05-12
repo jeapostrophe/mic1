@@ -1,3 +1,4 @@
+#!/usr/bin/env racket
 #lang racket/base
 (require racket/match
          racket/list
@@ -90,12 +91,12 @@
   (define InitialPC 0)
   (define InitialSP 1024)
   (define make-MIC1-step hl:make-MIC1-step)
-  (ll:compile-MIC1-circuit? "MIC1")
   (command-line
    #:program "mic1"
    #:once-any
    [("--ll") "Use low-level (gate based) simulator with compiled CPU"
-    (set! make-MIC1-step ll:make-MIC1-step)]
+    (set! make-MIC1-step ll:make-MIC1-step)
+    (ll:compile-MIC1-circuit? "MIC1")]
    [("--lli") "Use low-level (gate based) simulator with interpreted CPU"
     (set! make-MIC1-step ll:make-MIC1-step)
     (ll:compile-MIC1-circuit? #f)]
@@ -106,6 +107,8 @@
     (set! InitialPC (string->number pc-str))]
    [("--sp") sp-str "Initial Stack Pointer (default: 1024)"
     (set! InitialSP (string->number sp-str))]
+   #:usage-help "microcode-path must be either .prom (compiled) or .mc (source)"
+   #:usage-help "memory-image-path must be either .o (compiled) or .s (source)"
    #:args (microcode-path memory-image-path)
 
    (define start!
