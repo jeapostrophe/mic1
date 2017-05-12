@@ -15,6 +15,6 @@ lex.yy.c: masm.ll masm.h
 clean:
 	rm -f *.o masm lex.yy.c
 
-test: masm test.asm test.o.expected
-	./masm < test.asm > test.o
+test: masm test.s test.o.expected
+	./masm < test.s > test.o
 	diff -u test.o test.o.expected
