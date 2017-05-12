@@ -1,7 +1,9 @@
 #lang racket/base
 (require racket/match
          racket/list
+         racket/path
          racket/runtime-path
+         ;; xxx make private
          "lib.rkt"
          "simulator.rkt"
          (prefix-in ll: "low-level.rkt")
@@ -44,26 +46,6 @@
 
     (start! inform!)))
 
-(define (lines->image lines)
-  (define line 0)
-  (for/list ([l (in-list lines)]
-             #:unless (char=? #\# (string-ref l 0)))
-    (set! line (add1 line))
-    (define bits
-      (for/list ([c (in-list (reverse (string->list l)))]
-                 [col (in-naturals 1)])
-        (match c
-          [#\0 #f]
-          [#\1 #t]
-          [_ (error 'file->image "Illegal character on line ~a, col ~a: ~v"
-                    line col c)])))
-    (define n (bits->number bits))
-    n))
-
-(define (file->image p)
-  (local-require racket/file)
-  (lines->image (file->lines p)))
-
 (module+ test
   (define (test-debugger-on-fib which make-MIC1-step)
     (local-require (submod "mic1-test.rkt" test))
@@ -84,6 +66,24 @@
   (with-chk (['sim 'hl])
     (test-debugger-on-fib "high-level" hl:make-MIC1-step)))
 
+(define (file->image p)
+  (local-require racket/file)
+  (lines->image (file->lines p)))
+
+(define (file->microcode-image p)
+  (local-require "mcc.rkt")
+  (match (path-get-extension p)
+    [#".mc" (microcode->microcode-image/file p)]
+    [#".prom" (file->image p)]
+    [x (error 'mic1 "Unknown microcode extension: ~v" x)]))
+
+(define (file->memory-image p)
+  (local-require "masm.rkt")
+  (match (path-get-extension p)
+    [#".s" (asm->image/file p)]
+    [#".o" (file->image p)]
+    [x (error 'mic1 "Unknown memory extension: ~v" x)]))
+
 (define (main!)
   (local-require racket/cmdline)
 
@@ -98,7 +98,7 @@
     (set! make-MIC1-step ll:make-MIC1-step)]
    [("--lli") "Use low-level (gate based) simulator with interpreted CPU"
     (set! make-MIC1-step ll:make-MIC1-step)
-    (ll:compile-MIC1-circuit? #f)]   
+    (ll:compile-MIC1-circuit? #f)]
    [("--hl") "Use high-level (algorithmic) simulator (default)"
     (set! make-MIC1-step hl:make-MIC1-step)]
    #:once-each
@@ -107,18 +107,15 @@
    [("--sp") sp-str "Initial Stack Pointer (default: 1024)"
     (set! InitialSP (string->number sp-str))]
    #:args (microcode-path memory-image-path)
-   
+
    (define start!
      (make-MIC1-simulator
       make-MIC1-step
-      (file->image microcode-path)
-      (file->image memory-image-path)
+      (file->microcode-image microcode-path)
+      (file->memory-image memory-image-path)
       InitialPC
       InitialSP))
    (debug-MIC1 start!)))
 
 (module+ main
   (main!))
-
-;; xxx add microcompiler
-;; xxx add macroassembler

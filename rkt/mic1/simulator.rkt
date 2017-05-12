@@ -218,6 +218,27 @@
         (reg-decode (bitwise-bit-field n 8 12))
         (bitwise-bit-field n 0 8)))
 
+(define (lines->image lines)
+  (define line 0)
+  (for/list ([l (in-list lines)]
+             #:unless (char=? #\# (string-ref l 0)))
+    (set! line (add1 line))
+    (define bits
+      (for/list ([c (in-list (reverse (string->list l)))]
+                 [col (in-naturals 1)])
+        (match c
+          [#\0 #f]
+          [#\1 #t]
+          [_ (error 'file->image "Illegal character on line ~a, col ~a: ~v"
+                    line col c)])))
+    (define n (bits->number bits))
+    n))
+
+(define (image->lines bits ns)
+  (local-require racket/format)
+  (for/list ([n (in-list ns)])
+    (~r n #:base 2 #:min-width bits #:pad-string "0")))
+
 (define μinst/c (listof any/c))
 (provide
  (contract-out
@@ -245,4 +266,8 @@
        (listof exact-integer?)
        exact-integer?
        exact-integer?
-       simulator?)]))
+       simulator?)]
+  [lines->image (-> (listof string?) (listof exact-nonnegative-integer?))]
+  [image->lines (-> exact-nonnegative-integer?
+                    (listof exact-nonnegative-integer?)
+                    (listof string?))]))
