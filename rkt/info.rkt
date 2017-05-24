@@ -7,7 +7,7 @@
 
 (define collection "mic1")
 
-;; xxx scribblings
+(define scribblings '(("mic1.scrbl" () ("Hardware"))))
 
 (define raco-commands
   '(("mic1" (submod mic1/mic1 main) "run MIC1 simulator" #f)

@@ -4,7 +4,6 @@
          racket/list
          racket/path
          racket/runtime-path
-         ;; xxx make private
          "lib.rkt"
          "simulator.rkt"
          (prefix-in ll: "low-level.rkt")
@@ -74,6 +73,7 @@
 (define (file->microcode-image p)
   (local-require "mcc.rkt")
   (match (path-get-extension p)
+    ;; xxx expose symtab and add dprom (prom doesn't for backwards compat)
     [#".mc" (microcode->microcode-image/file p)]
     [#".prom" (file->image p)]
     [x (error 'mic1 "Unknown microcode extension: ~v" x)]))
