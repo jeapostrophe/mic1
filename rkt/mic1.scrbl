@@ -33,7 +33,8 @@ as well as two 16-bit registers for interfacing with memory (the
 MAR--Memory Address Register--and MBR--Memory Buffer Register.) The
 top 4 bits of the MAR is ignored, so the MIC-1 has a 12-bit address
 space. Memory access is delayed by one cycle, during which the
-appropriate flag must be asserted.
+appropriate flag must be asserted. If both flags are asserted, then
+the external controller halts the machine.
 
 The ALU's A side is either a register or the MBR. The shifter result
 may be output to the MBR or any register. The MAR may be written from
@@ -93,16 +94,16 @@ the register 2, the Stack Pointer (default: 1024)}
 
 @subsection[#:tag "mc-image"]{Microcode Image}
 
-A microcode image matches the grammar @nonterm{prom}.
+A microcode image matches the grammar @nonterm{PROM}.
 
-@BNF[(list @nonterm{prom}
-           @BNF-seq{@nonterm{line} ...})
-     (list @nonterm{line}
-           @BNF-seq[@nonterm{entry} @litchar{\n}])
-     (list @nonterm{entry}
-           @BNF-alt[@nonterm{mir}
-                    @elem{@litchar{#} any sequence of character except @litchar{\n}}])
-     (list @nonterm{mir}
+@BNF[(list @nonterm{PROM}
+           @BNF-seq{@nonterm{Line} ...})
+     (list @nonterm{Line}
+           @BNF-seq[@nonterm{Entry} @litchar{\n}])
+     (list @nonterm{Entry}
+           @nonterm{MIR}
+           @elem{@litchar{#} any sequence of character except @litchar{\n}})
+     (list @nonterm{MIR}
            @BNF-seq[@nonterm{AMUX}
                     @nonterm{COND}
                     @nonterm{ALU}
@@ -117,37 +118,37 @@ A microcode image matches the grammar @nonterm{prom}.
                     @nonterm{A}
                     @nonterm{ADDR}])
      (list @nonterm{AMUX}
-           @BNF-alt[@elem{@litchar{0} --- ALU A side holds A register}
-                    @elem{@litchar{1} --- ALU A side holds MBR}])
+           @elem{@litchar{0} --- ALU A side holds A register}
+           @elem{@litchar{1} --- ALU A side holds MBR})
      (list @nonterm{COND}
-           @BNF-alt[@elem{@litchar{00} --- Never jump}
-                    @elem{@litchar{01} --- Jump on negative ALU output}
-                    @elem{@litchar{10} --- Jump on zero ALU output}
-                    @elem{@litchar{11} --- Always jump}])
+           @elem{@litchar{00} --- Never jump}
+           @elem{@litchar{01} --- Jump on negative ALU output}
+           @elem{@litchar{10} --- Jump on zero ALU output}
+           @elem{@litchar{11} --- Always jump})
      (list @nonterm{ALU}
-           @BNF-alt[@elem{@litchar{00} --- A + B}
-                    @elem{@litchar{01} --- A & B}
-                    @elem{@litchar{10} --- A}
-                    @elem{@litchar{11} --- ! A}])
+           @elem{@litchar{00} --- A + B}
+           @elem{@litchar{01} --- A & B}
+           @elem{@litchar{10} --- A}
+           @elem{@litchar{11} --- ! A})
      (list @nonterm{SH}
-           @BNF-alt[@elem{@litchar{00} --- No shift}
-                    @elem{@litchar{01} --- Right shift}
-                    @elem{@litchar{10} --- Left shift}])
+           @elem{@litchar{00} --- No shift}
+           @elem{@litchar{01} --- Right shift}
+           @elem{@litchar{10} --- Left shift})
      (list @nonterm{MBR}
-           @BNF-alt[@elem{@litchar{0} --- Leave MBR unchanged}
-                    @elem{@litchar{1} --- Write shifter output to MBR}])
+           @elem{@litchar{0} --- Leave MBR unchanged}
+           @elem{@litchar{1} --- Write shifter output to MBR})
      (list @nonterm{MAR}
-           @BNF-alt[@elem{@litchar{0} --- Leave MAR unchanged}
-                    @elem{@litchar{1} --- Write ALU B side to MAR}])
+           @elem{@litchar{0} --- Leave MAR unchanged}
+           @elem{@litchar{1} --- Write ALU B side to MAR})
      (list @nonterm{RD}
-           @BNF-alt[@elem{@litchar{0} --- Do not enable memory read}
-                    @elem{@litchar{1} --- Read from memory}])
+           @elem{@litchar{0} --- Do not enable memory read}
+           @elem{@litchar{1} --- Read from memory})
      (list @nonterm{WR}
-           @BNF-alt[@elem{@litchar{0} --- Do not enable memory write}
-                    @elem{@litchar{1} --- Write to memory}])
+           @elem{@litchar{0} --- Do not enable memory write}
+           @elem{@litchar{1} --- Write to memory})
      (list @nonterm{ENC}
-           @BNF-alt[@elem{@litchar{0} --- Do not save shifter output}
-                    @elem{@litchar{1} --- Write shifter output to @nonterm{C} register}])
+           @elem{@litchar{0} --- Do not save shifter output}
+           @elem{@litchar{1} --- Write shifter output to @nonterm{C} register})
      (list @nonterm{C} @elem{4-bit register label})
      (list @nonterm{B} @elem{4-bit register label})
      (list @nonterm{A} @elem{4-bit register label})
@@ -159,17 +160,17 @@ In addition, a microcode image may only contain up to 256
 
 @subsection[#:tag "mem-image"]{Memory Image}
 
-A memory image matches the grammar @nonterm{object}.
+A memory image matches the grammar @nonterm{Image}.
 
-@BNF[(list @nonterm{object}
-           @BNF-seq{@nonterm{line} ...})
-     (list @nonterm{line}
-           @BNF-seq[@nonterm{entry} @litchar{\n}])
-     (list @nonterm{entry}
-           @BNF-alt[@nonterm{value}
-                    @elem{@litchar{#} any sequence of character except @litchar{\n}}])
-     (list @nonterm{value}
-           @elem{16-bit value})]
+@BNF[(list @nonterm{Image}
+           @BNF-seq{@nonterm{Line} ...})
+     (list @nonterm{Line}
+           @BNF-seq[@nonterm{Entry} @litchar{\n}])
+     (list @nonterm{Entry}
+           @nonterm{Value}
+           @elem{@litchar{#} any sequence of character except @litchar{\n}})
+     (list @nonterm{Value}
+           @elem{16-bit value written using the characters @litchar{0} and @litchar{1}})]
 
 In addition, a memory image may only contain up to 4096
 @nonterm{value} lines.
@@ -191,7 +192,70 @@ While it is possible to directly write in the @secref["mc-image"]
 format, it is extremely error-prone and tedious. MAL provides a
 convenient way to write microprograms.
 
-XXX document MAL
+MAL supports block comments in between @litchar["{"] and
+@litchar["}"]. Labels are sequences of any characters except
+@litchar["\n (,:;)"].
+
+A MAL program matches the following grammar @nonterm{Program}:
+
+@BNF[(list @nonterm{Program}
+           @BNF-seq{}
+           @BNF-seq{@litchar{\n} @nonterm{Program}}
+           @BNF-seq{@nonterm{Instruction} @litchar{\n} @nonterm{Program}})
+     (list @nonterm{Instruction}
+           @BNF-seq{}
+           @BNF-seq{@nonterm{Component} @litchar[";"] @nonterm{Instruction}})]
+
+@nonterm{Instruction}s are composed of multiple
+@nonterm{Component}s. Each @nonterm{Component} determines some fields
+of the @secref["mc-image"]. If two @nonterm{Component}s assign the
+same field differently, then a compilation error is raised. The
+following grammar specifies the various @nonterm{Component}s:
+
+@BNF[(list @nonterm{Component}
+           (elem @BNF-seq{@litchar{mar} @litchar{:=} @nonterm{BExpr}}
+                 @elem{--- Writes the ALU B side to MAR})
+           (elem @BNF-seq{@nonterm{Register} @litchar{:=} @nonterm{ShExpr}}
+                 @elem{--- Writes the shifter output to given register})
+           (elem @BNF-seq{@litchar{mbr} @litchar{:=} @nonterm{ShExpr}}
+                 @elem{--- Writes the shifter output to MBR})
+           (elem @BNF-seq{@litchar{alu} @litchar{:=} @nonterm{AluExpr}}
+                 @elem{--- Sets the ALU output})
+           (elem @BNF-seq{@litchar{if} @nonterm{Cond} @litchar{then} @litchar{goto} @nonterm{Label}}
+                 @elem{--- Sets the COND flag and the ADDR value})
+           (elem @BNF-seq{@litchar{goto} @nonterm{Label}}
+                 @elem{--- Sets the COND flag to @litchar{11} and the ADDR value})
+           (elem @litchar{rd}
+                 @elem{--- Sets the RD flag})
+           (elem @litchar{wr}
+                 @elem{--- Sets the WR flag}))]
+
+The remaining nonterminals are specified by the following grammar:
+
+@BNF[(list @nonterm{Cond}
+           @elem{@litchar{n} --- Jump on negative ALU output}
+           @elem{@litchar{z} --- Jump on zero ALU output})
+     (list @nonterm{ShExpr}
+           @BNF-seq{@nonterm{AluExpr} @elem{--- Do not shift}}
+           @BNF-seq{@litchar{lshift@"("} @nonterm{AluExpr} @litchar{@")"} @elem{--- Left shift}}
+           @BNF-seq{@litchar{rshift@"("} @nonterm{AluExpr} @litchar{@")"} @elem{--- Right shift}})
+     (list @nonterm{AluExpr}
+           @BNF-seq{@nonterm{AExpr} @litchar{+} @nonterm{BExpr} @elem{--- Addition}}
+           @BNF-seq{@litchar{band@"("} @nonterm{AExpr} @litchar{,} @nonterm{BExpr} @litchar{@")"} @elem{--- Bitwise And}}
+           @BNF-seq{@nonterm{AExpr} @elem{--- Identity}}
+           @BNF-seq{@litchar{inv@"("} @nonterm{AExpr} @litchar{@")"} @elem{--- Bitwise Negation}})
+     (list @nonterm{AExpr}
+           @nonterm{Register}
+           @litchar{mbr})
+     (list @nonterm{BExpr} @nonterm{Register})
+     (list @nonterm{Register}
+           @litchar{pc} @litchar{ac} @litchar{sp} @litchar{sp} @litchar{ir}
+           @litchar{tir} @litchar{0} @litchar{1} @litchar{(-1)} @litchar{amask}
+           @litchar{smask} @litchar{a} @litchar{b} @litchar{c} @litchar{d}
+           @litchar{e} @litchar{f})]
+
+If a MAL program produces an image greater than 256 instructions, then
+no error is raised during compilation.
 
 For examples see the
 @link["https://github.com/jeapostrophe/mic1/tree/master/examples"]{Github
@@ -245,21 +309,22 @@ The following instructions are recognized:
  #:row-properties '(bottom-border ())
  (list
   (list "Mnemonic" "Encoding" "Instruction" "Semantics")
-  @instruction["LODD" X "0000" "Load Direct"      @elem{AC := Mem[X]}]
-  @instruction["STOD" X "0001" "Store Direct"     @elem{Mem[X] := AC}]
-  @instruction["ADDD" X "0010" "Add Direct"       @elem{AC := AC + Mem[X]}]
-  @instruction["SUBD" X "0011" "Subtract Direct"  @elem{AC := AC - Mem[X]}]
-  @instruction["JPOS" X "0100" "Jump on positive" @elem{If AC > 0, PC := X}]
-  @instruction["JZER" X "0101" "Jump on zero"     @elem{If AC = 0, PC := X}]
-  @instruction["JUMP" X "0110" "Jump"             @elem{PC := X}]
-  @instruction["LOCO" X "0111" "Load Constant"    @elem{AC := X}]
-  @instruction["LODL" X "1000" "Load Local"       @elem{AC := Mem[SP + X]}]
-  @instruction["STOL" X "1001" "Store Local"      @elem{Mem[SP + X] := AC}]
-  @instruction["ADDL" X "1010" "Add Local"        @elem{AC := AC + Mem[SP + X]}]
-  @instruction["SUBL" X "1011" "Subtract Local"   @elem{AC := AC - Mem[SP + X]}]
-  @instruction["JNEG" X "1100" "Jump on negative" @elem{If AC < 0, PC := X}]
-  @instruction["JNZE" X "1101" "Jump unless zero" @elem{If AC ≠ 0, PC := X}]
-  @instruction["CALL" X "1110" "Call"             @elem{SP := SP - 1@";" Mem[SP] := PC@";" PC := X}]
+  @instruction["LODD" X "0000" "Load Direct"          @elem{AC := Mem[X]}]
+  @instruction["STOD" X "0001" "Store Direct"         @elem{Mem[X] := AC}]
+  @instruction["ADDD" X "0010" "Add Direct"           @elem{AC := AC + Mem[X]}]
+  @instruction["SUBD" X "0011" "Subtract Direct"      @elem{AC := AC - Mem[X]}]
+  @instruction["JPOS" X "0100" "Jump on non-negative" @elem{If AC ≥ 0, PC := X}]
+  @instruction["JZER" X "0101" "Jump on zero"         @elem{If AC = 0, PC := X}]
+  @instruction["JUMP" X "0110" "Jump"                 @elem{PC := X}]
+  @instruction["LOCO" X "0111" "Load Constant"        @elem{AC := X}]
+  @instruction["LODL" X "1000" "Load Local"           @elem{AC := Mem[SP + X]}]
+  @instruction["STOL" X "1001" "Store Local"          @elem{Mem[SP + X] := AC}]
+  @instruction["ADDL" X "1010" "Add Local"            @elem{AC := AC + Mem[SP + X]}]
+  @instruction["SUBL" X "1011" "Subtract Local"       @elem{AC := AC - Mem[SP + X]}]
+  @instruction["JNEG" X "1100" "Jump on negative"     @elem{If AC < 0, PC := X}]
+  @instruction["JNZE" X "1101" "Jump unless zero"     @elem{If AC ≠ 0, PC := X}]
+  @instruction["CALL" X "1110" "Call"
+               @elem{SP := SP - 1@";" Mem[SP] := PC@";" PC := X}]
   @instruction["PSHI" #f "1111000000000000" "Push Indirect"
                @elem{SP := SP - 1@";" Mem[SP] := Mem[AC]}]
   @instruction["POPI" #f "1111001000000000" "Pop Indirect"
@@ -278,6 +343,9 @@ The following instructions are recognized:
                @elem{SP := SP - Y}]
   @instruction["HALT" #f "1111111100000000" "Halt"
                @elem{Halt processor}])]
+
+If a MAC-1 program produces an image greater than 4096 instructions,
+then no error is raised during compilation.
 
 For examples see the
 @link["https://github.com/jeapostrophe/mic1/tree/master/examples"]{Github
