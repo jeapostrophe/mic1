@@ -106,8 +106,9 @@
     [else
      (breadn B)]))
 
-;; XXX Write an optimizer: Find Id and merge the wires, find
-;; duplicated gates and combine them.
+;; XXX Write an optimizer: Find Id (Not Not) and merge the wires, find
+;; duplicated gates and combine them. Fold TRUE & FALSE. Dead-code
+;; elimination for GROUND.
 
 (define compiler-executor (make-will-executor))
 (define (compiler-executor-go)
