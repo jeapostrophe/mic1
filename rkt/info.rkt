@@ -3,7 +3,9 @@
 
 (define deps (list "base"
                    "parser-tools-lib"))
-(define build-deps (list "chk"))
+(define build-deps (list "racket-doc"
+                         "scribble-lib"
+                         "chk"))
 
 (define collection "mic1")
 
