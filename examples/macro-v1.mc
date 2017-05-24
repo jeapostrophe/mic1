@@ -66,7 +66,7 @@ JPOS: {IR = 0100 ???? ???? ????}
 {Test if the AC is negative, if so go back to interp start and thus
  continue to the next line of the program}
 alu := ac; if n then goto START;
-{If it was negative, assign the PC to the bottom 12-bits and go back
+{If it was not negative, assign the PC to the bottom 12-bits and go back
  to interp start}
 DIRECT_JUMP:
 pc := band(amask, ir); goto START; 
@@ -121,7 +121,7 @@ alu := tir; if n then goto SUBL;
 
 ADDL: {IR = 1010 ???? ???? ????}
 {Compute the address of the local variable}
-a := ir + sp; 
+a := ir + sp;
 {Start a read and then go to READ_AND_ADD in the implementation of
  ADDD to finish}
 mar := a; rd; goto READ_AND_ADD; 
