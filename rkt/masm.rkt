@@ -46,6 +46,7 @@
   LODD STOD ADDD SUBD JPOS JZER JUMP LOCO
   LODL STOL ADDL SUBL JNEG JNZE CALL PSHI
   POPI PUSH POP  RETN SWAP INSP DESP HALT
+  LSHIFT BNEG ANDC MULC
   #:lexer
   [(eof) 'EOF]
   [(:or #\tab #\space #\newline) (return-without-pos (asm-lex input-port))]
@@ -120,6 +121,10 @@
           [(RETN    ) (as-inst "1111100000000000")]
           [(SWAP    ) (as-inst "1111101000000000")]
           [(INSP Arg) (as-iarg "11111100" $2)]
+          [(LSHIFT  ) (as-inst "1111110100000000")]
+          [(MULC Arg) (as-iarg "1111110101" $2)]
+          [(  BNEG  ) (as-inst "1111110110000000")]
+          [(  ANDC  ) (as-inst "1111110111000000")]
           [(DESP Arg) (as-iarg "11111110" $2)]
           [(HALT    ) (as-inst "1111111100000000")]))))
 
