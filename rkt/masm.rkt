@@ -49,7 +49,7 @@
   #:lexer
   [(eof) 'EOF]
   [(:or #\tab #\space #\newline) (return-without-pos (asm-lex input-port))]
-  [(:: alphabetic (:* (:or alphabetic numeric)) #\:) (token-LABEL lexeme)]
+  [(:: alphabetic (:* (:or alphabetic numeric "_")) #\:) (token-LABEL lexeme)]
   [(:: #\- (:+ numeric)) (token-NUM (string->number lexeme))]
   [(:+ numeric) (token-NUM (string->number lexeme))]
   [".LOC" 'LOC]
