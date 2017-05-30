@@ -357,4 +357,7 @@ repository}, specifically: @exec{fib.s} implements Fibonacci and
 @(require (for-label mic1/hdl))
 @defmodule[mic1/hdl]
 
-XXX document HDL
+The implementation contains a general purpose hardware description
+language that compiles circuits to networks of NAND gates. The network
+can be simulated in Racket or via C compilation. In the future it may
+be documented.
