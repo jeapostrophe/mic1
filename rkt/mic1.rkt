@@ -11,40 +11,99 @@
 (module+ test
   (require chk))
 
-(define (debug-MIC1 s)
-  (match-define (simulator Microcode Memory r! r start!) s)
-  (let/ec esc
-    (define cycle 0)
-    (define subcycle 0)
+(define (debug-MIC1 debug? make-s)
+  (local-require readline
+                 readline/pread
+                 racket/format)
 
-    (local-require racket/format)
-    (define (dump-state!)
-      (define LABELW 10)
-      (for ([rn (in-list simulator-vars)])
-        (define x (r rn))
-        (displayln
-         (~a (~a #:min-width LABELW rn) " : "
-             (~r x #:base 2 #:min-width 16 #:pad-string "0")
-             " , or "
-             (~r x #:min-width 6)
-             " or signed "
-             (~r (unsigned->signed 16 x) #:min-width 6 #:sign '++))))
-      (newline)
-      (displayln
-       (~a (~a #:min-width LABELW "Cycles") cycle)))
+  (define (make-cmd-repl char read cmds)
+    (define prom (string->bytes/utf-8 (format "~a " char)))
+    (define (cmd-repl)
+      (define in (parameterize ([readline-prompt prom]) (read)))
+      (define cmd (if (list? in) (first in) in))
+      (match (hash-ref cmds cmd #f)
+        [#f
+         (eprintf "Unknown command: ~v\n" cmd)
+         ;; xxx add docs
+         (eprintf "Available commands: ~a\n" (hash-keys cmds))
+         (cmd-repl)]
+        [proc
+         (proc in)]))
+    cmd-repl)
 
-    (define (inform!)
-      (when (and (= (r 'Read?) 1) (= (r 'Write?) 1))
-        (dump-state!)
+  ;; xxx set up breakpoints, step a cycle, show address relative to
+  ;; symbols, etc
+  (define outer-debug-loop
+    (make-cmd-repl
+     "#" (λ () (if (not debug?) 'go (read)))
+     (hasheq
+      'g
+      (λ (c)
+        (define s (make-s))
 
-        ;; xxx implement debugger
-        (eprintf "Exiting simulator...\n")
-        (esc))
+        (match-define (simulator Microcode Memory r! r start!) s)
+        (define cycle 0)
 
-      (set! subcycle (modulo (add1 subcycle) 4))
-      (set! cycle (if (= subcycle 0) (add1 cycle) cycle)))
+        (define (display-value w rn x)
+          (displayln
+           (~a (~a #:min-width w rn) " : "
+               (~r x #:base 2 #:min-width 16 #:pad-string "0")
+               " , or "
+               (~r x #:min-width 6)
+               " or signed "
+               (~r (unsigned->signed 16 x) #:min-width 6 #:sign '++))))
 
-    (start! inform!)))
+        (define (dump-state!)
+          (define LABELW 10)
+          (for ([rn (in-list simulator-vars)])
+            (display-value LABELW rn (r rn)))
+          (newline)
+          (displayln
+           (~a (~a #:min-width LABELW "Cycles") cycle)))
+
+        (define (do-inner-debug-loop esc)
+          (define inner-debug-loop
+            (make-cmd-repl
+             "$" read
+             (hasheq 'q (λ (c) (esc))
+                     'c (λ (c) (void))
+                     'm (λ (c)
+                          (define-values (start end)
+                            (match c
+                              [(list 'm (? number? c))
+                               (values c (add1 c))]
+                              [(list 'm (? number? s) 'to (? number? e))
+                               (values s (add1 e))]
+                              [(list 'm (? number? s) (? number? c))
+                               (values s (+ s c))]
+                              [_ (values 0 0)]))
+                          (for ([c (in-range (min start end) (max start end))])
+                            (display-value 5 c (vector-ref Memory c)))
+                          (inner-debug-loop))
+                     'st (λ (c)
+                           (dump-state!)
+                           (inner-debug-loop)))))
+          (inner-debug-loop))
+
+        (let/ec esc
+          (start!
+           (λ ()
+             (set! cycle (add1 cycle))
+
+             (when (and (= (r 'Read?) 1) (= (r 'Write?) 1))
+               (eprintf "HALT\n")
+               (if debug?
+                 (do-inner-debug-loop esc)
+                 (esc))))))
+
+        (cond
+          [debug?
+           (outer-debug-loop)]
+          [else
+           (dump-state!)
+           (eprintf "Exiting simulator...\n")])))))
+
+  (outer-debug-loop))
 
 (module+ test
   (define (test-debugger-on-fib which make-MIC1-step)
@@ -92,6 +151,7 @@
 
   (define InitialPC 0)
   (define InitialSP 1024)
+  (define Debug? #f)
   (define make-MIC1-step hl:make-MIC1-step)
   (command-line
    #:program (short-program+command-name)
@@ -105,6 +165,8 @@
    [("--hl") "Use high-level (algorithmic) simulator (default)"
     (set! make-MIC1-step hl:make-MIC1-step)]
    #:once-each
+   [("-d") "Run with debugger"
+    (set! Debug? #t)]
    [("--pc") pc-str "Initial Program Counter (default: 0)"
     (set! InitialPC (string->number pc-str))]
    [("--sp") sp-str "Initial Stack Pointer (default: 1024)"
@@ -113,14 +175,15 @@
    #:usage-help "memory-image-path must be either .o (compiled) or .s (source)"
    #:args (microcode-path memory-image-path)
 
-   (define start!
-     (make-MIC1-simulator
-      make-MIC1-step
-      (file->microcode-image microcode-path)
-      (file->memory-image memory-image-path)
-      InitialPC
-      InitialSP))
-   (debug-MIC1 start!)))
+   (debug-MIC1
+    Debug?
+    (λ ()
+      (make-MIC1-simulator
+       make-MIC1-step
+       (file->microcode-image microcode-path)
+       (file->memory-image memory-image-path)
+       InitialPC
+       InitialSP)))))
 
 (module+ main
   (main!))
