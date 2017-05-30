@@ -106,10 +106,6 @@
     [else
      (breadn B)]))
 
-;; XXX Write an optimizer: Find Id (Not Not) and merge the wires, find
-;; duplicated gates and combine them. Fold TRUE & FALSE. Dead-code
-;; elimination for GROUND.
-
 (define compiler-executor (make-will-executor))
 (define (compiler-executor-go)
   (will-execute compiler-executor)
@@ -117,42 +113,128 @@
 (define compiler-executor-t
   (thread compiler-executor-go))
 
-(define (compile-simulate! sn
+(define (compile-simulate! psn
                            #:visible-wires [visible-wires empty]
                            #:label [label #f])
   (local-require racket/set
                  racket/system
                  ffi/unsafe
                  ffi/unsafe/cvector)
+  (define optimize? #f)
+  (define temp? (not label))
+  (define flat-vwires (flatten visible-wires))
 
-  (define Gates 0)
-  (define WireUses (make-hasheq))
-  (define WireSets (make-hasheq))
+  (define (optimize sn)
+    (struct not-ast (lhs))
+    (define memo-not (make-hasheq))
+    (define (memo-not-ast a)
+      (hash-ref! memo-not a (λ () (not-ast a))))
+    (define (smart-not a)
+      (match a
+        [(not-ast b) b]
+        [_ (memo-not-ast a)]))
 
-  (define gates null)
-  (tree-walk
-   sn
-   (match-lambda
-     [(debug f) (void)]
-     [(nand a b o)
-      (set! gates (cons (cons a b) gates))
-      (set! Gates (add1 Gates))
-      (for ([x (in-list (list a b o))])
-        (hash-update! WireUses x add1 0))
-      (hash-update! WireSets o add1 0)]))
+    (struct nand-ast (lhs rhs))
+    (define memo-a (make-hasheq))
+    (define (memo-nand-ast a b)
+      (define memo-b (hash-ref! memo-a a (λ () (make-hasheq))))
+      (hash-ref! memo-b b (λ () (nand-ast a b))))
 
-  (define dedupe-gates (remove-duplicates gates))
-  (define Duplicates (- Gates (length dedupe-gates)))
+    (define (smart-nand a b)
+      (cond
+        [(or (eq? a FALSE) (eq? b FALSE))
+         TRUE]
+        [(and (eq? a TRUE) (eq? b TRUE))
+         FALSE]
+        [(eq? a TRUE) (smart-not b)]
+        [(eq? b TRUE) (smart-not a)]
+        [(eq? a b) (smart-not a)]
+        [else
+         (if (< (eq-hash-code a) (eq-hash-code b))
+           (memo-nand-ast a b)
+           (memo-nand-ast b a))]))
 
-  (for ([(w c) (in-hash WireSets)]
-        #:unless (eq? w GROUND)
-        #:when (> c 1))
-    (eprintf "~a wire set more than once.\n" w))
+    (define gates (make-hasheq))
+    (define (-> w) (hash-ref gates w w))
+    (tree-walk
+     sn
+     (match-lambda
+       [(debug f) (void)]
+       [(nand a b o)
+        (define m (smart-nand (-> a) (-> b)))
+        (unless (eq? o GROUND)
+          (hash-set! gates o m))]))
+
+    (define emitted? (make-hasheq))
+    (define (compile-ast op g)
+      (cond
+        [(hash-ref emitted? g #f) => (λ (ho) (values ho null))]
+        [else
+         (define o
+           (or op
+               (if (wire? g) g (Wire))))
+         (hash-set! emitted? g o)
+         (values o
+                 (match g
+                   [(? wire?)
+                    (when (and o (not (eq? o g))) (error 'compile-ast))
+                    null]
+                   [(not-ast a)
+                    (define-values (wa na) (compile-ast #f a))
+                    (cons na (Nand wa wa o))]
+                   [(nand-ast a b)
+                    (define-values (wa na) (compile-ast #f a))
+                    (define-values (wb nb) (compile-ast #f b))
+                    (cons (cons na nb) (Nand wa wb o))]))]))
+    (define (wire-dump w)
+      (match (hash-ref gates w #f)
+        [#f #f]
+        [g
+         (hash-remove! gates w)
+         (define-values (_ n) (compile-ast w g))
+         n]))
+
+    (map wire-dump flat-vwires))
+
+  (define (stats sn #:print? [print? #f])
+    (define Gates 0)
+    (define WireUses (make-hasheq))
+    (define WireSets (make-hasheq))
+
+    (define gates null)
+    (tree-walk
+     sn
+     (match-lambda
+       [(debug f) (void)]
+       [(nand a b o)
+        (set! gates (cons (cons a b) gates))
+        (set! Gates (add1 Gates))
+        (for ([x (in-list (list a b o))])
+          (hash-update! WireUses x add1 0))
+        (hash-update! WireSets o add1 0)]))
+
+    (define dedupe-gates (remove-duplicates gates))
+    (define Duplicates (- Gates (length dedupe-gates)))
+
+    (for ([(w c) (in-hash WireSets)]
+          #:unless (eq? w GROUND)
+          #:when (> c 1))
+      (eprintf "~a wire set more than once.\n" w))
+
+    (unless print?
+      (eprintf "~a has ~a NAND gates (~a duplicates) and ~a wires\n"
+               label Gates Duplicates (hash-count WireUses)))
+
+    (vector WireUses))
+
+  (define pre-stats (stats psn #:print? temp?))
+  (define sn (if optimize? (optimize psn) psn))
+  (define post-stats (stats sn #:print? temp?))
+
+  (match-define (vector WireUses) post-stats)
 
   (define _wire_t _uint64)
   (define WIRE-WIDTH 64)
-
-  (define flat-vwires (flatten visible-wires))
 
   (define Wire->A*B (make-hasheq))
   (for ([w (in-list flat-vwires)])
@@ -166,10 +248,6 @@
     (hash-set! Wire->A*B w (cons A B)))
   (define HOW-MANY-WIRE-VARS (set-count As))
 
-  (define temp? (not label))
-  (unless temp?
-    (eprintf "~a has ~a NAND gates (~a duplicates) and ~a wires\n"
-             label Gates Duplicates (hash-count WireUses)))
   (define the-label
     (if temp?
       (format "HDL-Temp-~a"  (current-milliseconds))
