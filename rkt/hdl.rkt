@@ -240,7 +240,7 @@
   (unless (system* (find-executable-path "cc")
                    "-O3" "-march=native"
                    sn.c
-                   "-shared" "-o" sn.so)
+                   "-fPIC" "-shared" "-o" sn.so)
     (error 'compile-simulate! "Compilation failed"))
 
   (define sn-lib (ffi-lib sn.so))
