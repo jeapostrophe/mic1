@@ -35,7 +35,7 @@
   ;; symbols, etc
   (define outer-debug-loop
     (make-cmd-repl
-     "#" (λ () (if (not debug?) 'go (read)))
+     "#" (λ () (if (not debug?) 'g (read)))
      (hasheq
       'g
       (λ (c)
@@ -110,7 +110,7 @@
     (local-require (submod "mic1-test.rkt" test))
     (printf "Testing fib program (~a)\n" which)
     (define sim (make-MIC1-simulator make-MIC1-step FIB-MICRO-IMAGE empty 0 100))
-    (debug-MIC1 sim)
+    (debug-MIC1 #f (λ () sim))
     (define mem (simulator-mem sim))
     (local-require racket/vector)
     (chk (vector-copy mem 100 125)

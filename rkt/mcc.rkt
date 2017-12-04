@@ -297,7 +297,8 @@
   (require racket/runtime-path)
   (define-syntax-rule (static-check-compilation p)
     (begin (define-runtime-path tmp p)
-           (check-compilation tmp)))
+           (when (file-exists? tmp)
+             (check-compilation tmp))))
   (static-check-compilation "../examples/macro-v1.mc")
   (static-check-compilation "../examples/fib.mc"))
 

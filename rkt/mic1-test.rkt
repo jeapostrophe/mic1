@@ -334,11 +334,13 @@
   (define-runtime-path adder.o "../examples/adder.o")
   (define-runtime-path IO_str_and_echo.o "../examples/IO_str_and_echo.o")
   (define-runtime-path mic1.rkt "mic1.rkt")
-  
+
   (define (run-mic1! args #:in [inf #f])
-    (parameterize ([current-input-port
-                    (if inf (open-input-file inf) (current-input-port))])
-      (apply system* mic1.rkt args)))
+    (when (and (andmap file-exists? (rest args))
+               (or (not inf) (file-exists? inf)))
+      (parameterize ([current-input-port
+                      (if inf (open-input-file inf) (current-input-port))])
+        (apply system* mic1.rkt args))))
 
   (run-mic1! (list "--hl" macro-v1.mc adder.o))
   (run-mic1! (list "--hl" macro-v1.prom adder.s))

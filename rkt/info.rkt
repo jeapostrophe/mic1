@@ -2,7 +2,8 @@
 (define version "1.0")
 
 (define deps (list "base"
-                   "parser-tools-lib"))
+                   "parser-tools-lib"
+                   "readline-lib"))
 (define build-deps (list "racket-doc"
                          "scribble-lib"
                          "chk"))
