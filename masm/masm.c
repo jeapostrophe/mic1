@@ -1,7 +1,9 @@
+#define _POSIX_C_SOURCE 2
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/wait.h>
 
 void generate_code();
 void update_sym_table(char *);
@@ -164,12 +166,16 @@ void generate_first_pass() {
 
 int main(int argc, char *argv[]) {
   int object_file = 0;
-  if (argc > 1 && (strcmp(argv[1], "-o") == 0)) {
+  if (argc > 1 && (strncmp(argv[1], "-o", 2) == 0)) {
     object_file = 1;
   }
 
   char *passone = "/tmp/masm.passone";
   p1 = fopen(passone, "w+");
+  if ( p1 == NULL ) {
+    fprintf(stderr, "cannot open passone file, %s\n", passone);
+    exit(1);
+  }
   unlink(passone);
   generate_first_pass();
   
@@ -195,8 +201,9 @@ void print_first_pass() {
   }
 }
 
+#define MAX_SYM_LEN 26
 typedef struct symtab_entry {
-  char name[26];
+  char name[MAX_SYM_LEN];
   int addr;
   struct symtab_entry *next;
 } symtab_entry_t;
@@ -206,6 +213,10 @@ symtab_entry_t *symtab = NULL;
 void dump_table(void) {
   FILE *fd;
   fd = popen("sort", "w");
+  if ( fd == NULL ) {
+    fprintf(stderr, "cannot open sort\n");
+    exit(1);
+  }
   for (symtab_entry_t *list = symtab; list != NULL; list = list->next) {
     fprintf(fd,"# %-25s %4d\n",list->name, list->addr);
   }
@@ -222,7 +233,7 @@ void append_table(void) {
 
 int get_sym_val(char *symbol) {
   for (symtab_entry_t *list = symtab; list != NULL; list = list->next) {
-    if (strcmp(list->name, symbol) == 0) {
+    if (strncmp(list->name, symbol, MAX_SYM_LEN) == 0) {
       return(list->addr);
     }
   }
@@ -231,7 +242,7 @@ int get_sym_val(char *symbol) {
 
 void generate_code() {
   char instruction[18] = {'0'};
-  int  pc = 0, mask = 0, sym_val = 0, old_pc = 0, diff = 0;
+  int  pc = 0, sym_val = 0, old_pc = 0, diff = 0;
   char symbol[26] = {'0'};
 
   rewind(p1);
@@ -266,7 +277,7 @@ void generate_code() {
 
 void update_sym_table(char *symbol) {
   for (symtab_entry_t *list = symtab; list; list = list->next) {
-    if ((strcmp(list->name, symbol)) == 0) {
+    if ((strncmp(list->name, symbol, MAX_SYM_LEN)) == 0) {
       list->addr = pc;
       return;
     }
@@ -277,12 +288,16 @@ void update_sym_table(char *symbol) {
 
 void search_sym_table(char *symbol) {
   for (symtab_entry_t *list = symtab; list; list = list->next) {
-    if (strcmp(list->name, symbol) == 0) {      
+    if (strncmp(list->name, symbol, MAX_SYM_LEN) == 0) {      
       return;
     }
   }
   symtab_entry_t *element = malloc(sizeof(symtab_entry_t));
-  strcpy(element->name, symbol);
+  if ( element == NULL ) {
+    fprintf(stderr, "cannot allocate symtab entry\n");
+    exit(1);
+  }
+  strncpy(element->name, symbol, MAX_SYM_LEN);
   element->next = symtab;
   symtab = element;
 }
