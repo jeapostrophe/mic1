@@ -36,6 +36,8 @@ void initbuf(char *file)
       int total_size = 0;
       int buf_size = 2;
       buf = malloc(buf_size);
+      buf[0] = EOF;
+      buf[1] = 0;
       const int READSIZE = 1024;
       char localbuf[READSIZE+1];
       
@@ -78,7 +80,7 @@ void initbuf(char *file)
 		exit(1);
       }
       int rd = read(fd, buf, size);
-      buf[rd] = 0;      
+      buf[rd] = EOF;
 	}
     
     moveupline();
