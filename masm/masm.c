@@ -212,6 +212,7 @@ symtab_entry_t *symtab = NULL;
 
 void dump_table(void) {
   FILE *fd;
+  fflush(stdout);
   fd = popen("sort", "w");
   if ( fd == NULL ) {
     fprintf(stderr, "cannot open sort\n");
@@ -220,8 +221,7 @@ void dump_table(void) {
   for (symtab_entry_t *list = symtab; list != NULL; list = list->next) {
     fprintf(fd,"# %-25s %4d\n",list->name, list->addr);
   }
-  fclose(fd);
-  wait(NULL);
+  pclose(fd);
 }
 
 void append_table(void) {
