@@ -141,7 +141,7 @@
   (local-require "masm.rkt")
   (match (path-get-extension p)
     ;; xxx expose the symtab to debugger
-    [#".s" (let-values ([(s i) (asm->symtab+image/file p)]) i)]
+    [(or #".asm" #".s") (let-values ([(s i) (asm->symtab+image/file p)]) i)]
     [#".o" (file->image p)]
     [x (error 'mic1 "Unknown memory extension: ~v" x)]))
 
