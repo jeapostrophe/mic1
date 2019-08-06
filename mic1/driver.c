@@ -363,14 +363,14 @@ void InitializeSymbolTable(const char *program_file) {
   SymbolTableEntry_t *new_entry;
   while(1) {
     if ((fscanf(inputfile, "%s", src)) == EOF) break;
-    if (src[0] != '#') break;
+    if (src[0] != '#') continue;
 
     fscanf(inputfile, "%s", src);
-    name = malloc(sizeof(char)*strlen(src));
+    name = malloc(sizeof(char)*(strlen(src)+1));
     strcpy(name, src);
     
     fscanf(inputfile, "%s", src);
-    value = malloc(sizeof(char)*strlen(src));
+    value = malloc(sizeof(char)*(strlen(src)+1));
     strcpy(value, src);
 
     new_entry = malloc(sizeof(SymbolTableEntry_t));

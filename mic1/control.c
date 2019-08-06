@@ -241,7 +241,7 @@ EightBits Addr ;
    DetermineMmux (NBit, ZBit, Cond, &Mmux) ;
 
    if (Mmux == Zero) 
-         MicroPc = MicroPc + 1 ;
+         MicroPc = (MicroPc + 1) % MaxSize ;
    else
 	 MicroPc = ConvertToCardinal (Addr) ;
 
